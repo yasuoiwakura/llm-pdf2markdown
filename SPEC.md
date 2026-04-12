@@ -1,106 +1,102 @@
 # llm-pdf2markdown
 
-CLI tool to convert PDFs to Markdown using a local Ollama LLM.
+Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
-## Requirements
+## Status: PoC
 
-- Python 3.14+
-- Ollama running locally
-- `.venv` virtual environment (created automatically)
-
-## Installation
+## Run PoC
 
 ```bash
-git clone <repo>
-cd llm-pdf2markdown
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e .
+python poc.py
 ```
 
-## Configuration
-
-Create `.env` (see `.env.example`):
+## Config
 
 ```env
+# Enable/disable LLM providers (only one should be true)
+USE_OLLAMA=true
+USE_LMSTUDIO=false
+
+# Ollama (used only if USE_OLLAMA=true)
+# URL: http://localhost:11434, API: /api/generate
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=gemma3:4b
+OLLAMA_KEEP_ALIVE=30m
+
+# LM Studio (used only if USE_LMSTUDIO=true)
+# URL: http://localhost:1234, API: /v1/chat/completions (OpenAI-compatible)
+LMSTUDIO_URL=http://localhost:1234
+LMSTUDIO_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
+
 TEST_PDF=exampledata/test.pdf
-OUTPUT_DIR=
 ```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `gemma3:4b` | Model for image-to-markdown |
-| `TEST_PDF` | - | Path for manual testing |
-| `OUTPUT_DIR` | `""` | Output directory (empty = next to PDF) |
+## Supported LLM Providers
 
-## Usage
+| Provider | Enable Flag | Default URL | API Endpoint |
+|----------|-------------|-------------|--------------|
+| Ollama | USE_OLLAMA | localhost:11434 | /api/generate |
+| LM Studio | USE_LMSTUDIO | localhost:1234 | /v1/chat/completions |
 
-### Single file
-
-```bash
-python -m llm_pdf2markdown input.pdf
-python -m llm_pdf2markdown input.pdf --model llama3.2-vision
-```
-
-### Directory (batch)
-
-```bash
-python -m llm_pdf2markdown ./pdfs/
-```
-
-Recursively converts all `.pdf` files in the directory tree.
-
-### Output
-
-- `OUTPUT_DIR` set: `<OUTPUT_DIR>/<original_name>.md`
-- `OUTPUT_DIR` empty: `<original_dir>/<original_name>.md`
-
-## Project Structure
+## Structure
 
 ```
-llm-pdf2markdown/
-├── src/llm_pdf2markdown/
-│   ├── __init__.py
-│   ├── __main__.py         # python -m entry
-│   ├── cli.py              # Click CLI
-│   ├── ollama_client.py    # Ollama API client
-│   └── pdf_converter.py    # PDF → PNG converter
-├── tests/
-├── .gitignore
-├── .env.example
-├── pyproject.toml
-└── README.md
+llm_pdf2markdown/
+├── __init__.py   # LLM client (Ollama & LM Studio)
+├── client.py     # LLM client implementation
+└── pdf.py        # PDF converter
 ```
 
-## Dependencies
+## Implementation Guidelines
 
-- `pypdfium2` - PDF rendering to images
-- `httpx` - HTTP client for Ollama API
-- `click` - CLI framework
-- `python-dotenv` - Environment variable loading
-- `pillow` - Image handling
+ALWAYS start with the MINIMUM viable implementation:
+- Begin with the smallest, simplest working code
+- Verify it works before adding features
+- NEVER implement multiple features at once
 
-## Development
+## Implementation Steps
 
-### Phases
+| Step | Description | Status |
+|------|-------------|--------|
+| 1 | Basic LLM connection + ping (Ollama & LM Studio) | ✓ done |
+| 2 | Simple text prompt → response | ✓ done |
+| 3 | PDF → PNG images (temp_images/) | ✓ done |
+| 4 | Images → Markdown via LLM | pending |
+| 5 | Save Markdown file | pending |
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| PoC | todo | Connect to Ollama, send text prompt |
-| MVP | todo | PDF → PNG, send image, save Markdown |
-| Batch | todo | Directory recursion, batch processing |
+### Step 1: Connection
+- [x] Connects to LLM_PROVIDER URL
+- [x] Supports both Ollama and LM Studio
+- [x] Check available models
 
-### Testing
+### Step 2: Text Prompt
+- [x] Send simple text prompt
+- [x] Receive and return response
+- [x] Set keep_alive from OLLAMA_KEEP_ALIVE
 
-```bash
-pytest tests/
-```
+### Step 3: PDF → PNG Images
+- [x] Convert PDF pages to PNG images
+- [x] Save to temp_images/ directory
 
-## Notes
+### Step 4: Images → Markdown
+- [ ] Send image to LLM
+- [ ] Get Markdown response
 
-- KISS: Simple error handling, MVP scope
-- `.md` extension replaces `.pdf` in output filename
-- Model must support vision/images (e.g., `gemma3:4b`, `llama3.2-vision`, `llava`)
+### Step 5: Save Markdown
+- [ ] Combine page Markdowns
+- [ ] Save .md file
+
+## Critical Rules
+
+1. NEVER skip steps or implement future steps
+2. ALWAYS verify current step works before proceeding
+3. Keep each step as small as possible
+4. If stuck, ask user before implementing more
+5. Only implement ONE step at a time
+
+## Phases
+
+| Phase | Status |
+|-------|--------|
+| PoC | ✓ active - connection + text prompt |
+| MVP | pending - image → Markdown |
