@@ -1,0 +1,25 @@
+[project]
+name = "llm-pdf2markdown"
+version = "0.1.0"
+description = "Convert PDFs to Markdown using local Ollama LLM"
+requires-python = ">=3.14"
+dependencies = [
+    "pypdfium2>=4.0.0",
+    "httpx>=0.27.0",
+    "click>=8.0.0",
+    "python-dotenv>=1.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
