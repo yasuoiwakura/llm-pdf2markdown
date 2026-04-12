@@ -1,0 +1,1 @@
+Convert this PDF image to clean Markdown. Return ONLY the formatted content without any explanations, introductions, or meta-comments.

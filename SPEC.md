@@ -2,12 +2,12 @@
 
 Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
-## Status: PoC
+## Status: PoC → MVP (Multi-page support)
 
 ## Run PoC
 
 ```bash
-python poc.py
+python run.py
 ```
 
 ## Config
@@ -27,9 +27,75 @@ OLLAMA_KEEP_ALIVE=30m
 # URL: http://localhost:1234, API: /v1/chat/completions (OpenAI-compatible)
 LMSTUDIO_URL=http://localhost:1234
 LMSTUDIO_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
+LMSTUDIO_CONTEXT_SIZE=16384
+
+# Context size strategy
+# NOT RECOMMENDED: Langsam + kein Query der geladenen Modelle möglich
+CONTEXT_SIZE_BY_MODEL_LOAD=0
+# Ungetestet: Funktioniert möglicherweise
+CONTEXT_SIZE_PER_REQUEST=0
+
+# LLM Parameters
+MAX_PAGES_PER_REQUEST=4
+# Pages <= 4: All pages in single request
+# Pages > 4: 2-phase approach (NOT YET IMPLEMENTED)
+
+# Prompts (optional: use file instead of inline)
+# If OCR_PROMPT_FILE is set, file content overwrites OCR_PROMPT
+OCR_PROMPT=Convert this image to markdown
+OCR_PROMPT_FILE=prompts/ocr_prompt_detailed.md
+
+# Output
+OUTPUT_DIR=output
+OUTPUT_INTO_SAME_DIR=true
+OVERWRITE_OUTPUT_FILES=0
+KEEP_TEMP_FILES=0
 
 TEST_PDF=exampledata/test.pdf
 ```
+
+## Known Issues
+
+### LM Studio Context Size
+
+| Feature | Status | Hinweis |
+|---------|--------|--------|
+| `CONTEXT_SIZE_BY_MODEL_LOAD=1` | ⚠️ nicht empfohlen | Langsam, kein Query der geladenen Modelle möglich |
+| `CONTEXT_SIZE_PER_REQUEST=1` | ? ungetestet | Response enthält keine debug infos zur context size |
+
+**Empfehlung:** 
+- Modell **manuell in LM Studio GUI** mit gewünschter Context-Size laden
+- Oder **Template in LM Studio** anlegen und dort das Modell mit passender Context-Size definieren
+
+### REST API Bugs
+- `GET /api/v1/models` gibt leere Antwort (sollte geladene Modelle mit context_length zeigen)
+- Keine Möglichkeit, aktuell geladene Modelle mit context_length abzufragen
+- Modell wird bei jedem Laden neu geladen (es gibt keine saubere Prüfung ob passendes Modell bereits existiert)
+
+## Processing Strategy
+
+| Pages | Strategy |
+|-------|----------|
+| 1-4 | All pages in single request (default) |
+| >4 | 2-phase approach (prepared, not implemented) |
+
+## Prompts
+
+Prompts can be defined inline in .env or in separate files. If `*_FILE` is set, the file content takes precedence.
+
+```
+prompts/
+├── ocr_prompt.md                    # Current (unused)
+├── ocr_prompt_plain.md               # Basic version
+├── ocr_prompt_detailed.md            # Recommended: metadata + multi-page
+├── ocr_prompt_minimal.md             # Short version
+└── ocr_prompt_2phase_concept.md     # Future: 2-phase documentation
+```
+
+**Loading logic:**
+1. Load prompt from .env (e.g., `OCR_PROMPT`)
+2. If `OCR_PROMPT_FILE` is set and file exists → overwrite with file content
+3. If file doesn't exist → use .env value as fallback
 
 ## Supported LLM Providers
 
@@ -61,11 +127,14 @@ ALWAYS start with the MINIMUM viable implementation:
 | 1 | Basic LLM connection + ping (Ollama & LM Studio) | ✓ done |
 | 2 | Simple text prompt → response | ✓ done |
 | 3 | PDF → PNG images (temp_images/) | ✓ done |
-| 4 | Images → Markdown via LLM | pending |
-| 5 | Save Markdown file | pending |
+| 4 | Images → Markdown via LLM | ✓ done |
+| 5 | Save Markdown file | ✓ done |
+| 6 | Custom Prompts from .env or FILE | ✓ done |
+| 7 | **Multi-page: All pages in single request** | **current** |
+| 8 | Multi-page: 2-phase (metadata + content) | **prepared, not implemented** |
 
 ### Step 1: Connection
-- [x] Connects to LLM_PROVIDER URL
+- [x] Connects to URL based on USE_OLLAMA / USE_LMSTUDIO
 - [x] Supports both Ollama and LM Studio
 - [x] Check available models
 
@@ -79,12 +148,26 @@ ALWAYS start with the MINIMUM viable implementation:
 - [x] Save to temp_images/ directory
 
 ### Step 4: Images → Markdown
-- [ ] Send image to LLM
-- [ ] Get Markdown response
+- [x] Send image to LLM (Ollama OR LM Studio)
+- [x] Get Markdown response
 
 ### Step 5: Save Markdown
-- [ ] Combine page Markdowns
-- [ ] Save .md file
+- [x] Combine page Markdowns
+- [x] Save .md file
+
+### Step 6: Custom Prompts
+- [x] Load prompts from .env or *_FILE
+- [x] Support prompts/ directory
+
+### Step 7: Multi-page Support (Current)
+- [ ] Send all pages at once for documents with pages <= MAX_PAGES_PER_REQUEST
+- [ ] Prompt includes page context (page X of Y)
+- [ ] Extract metadata from first page
+
+### Step 8: 2-Phase Approach (NOT IMPLEMENTED)
+- [ ] Phase 1: Extract metadata from all pages at once
+- [ ] Phase 2: Extract content page-by-page
+- [ ] Merge metadata + content
 
 ## Critical Rules
 
@@ -99,4 +182,18 @@ ALWAYS start with the MINIMUM viable implementation:
 | Phase | Status |
 |-------|--------|
 | PoC | ✓ active - connection + text prompt |
-| MVP | pending - image → Markdown |
+| MVP | in progress - multi-page support |
+| 2-Phase | pending - prepared but not implemented |
+
+## Gemma3-4b Parameters
+
+For optimal OCR results with gemma3-4b:
+
+```env
+OLLAMA_MODEL=gemma3:4b
+# Recommended settings in Modelfile:
+# PARAMETER num_ctx 16384
+# PARAMETER num_predict 8192
+# PARAMETER temperature 0
+# PARAMETER top_p 0.00001
+```

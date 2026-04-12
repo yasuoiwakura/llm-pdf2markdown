@@ -7,60 +7,340 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-URL = os.getenv("OLLAMA_URL")
-MODEL = os.getenv("OLLAMA_MODEL")
-KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+# LLM Provider config
+USE_OLLAMA = os.getenv("USE_OLLAMA", "true").lower() == "true"
+USE_LMSTUDIO = os.getenv("USE_LMSTUDIO", "false").lower() == "true"
+
+# Ollama config
+OLLAMA_URL = os.getenv("OLLAMA_URL")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+
+# LM Studio config
+LMSTUDIO_URL = os.getenv("LMSTUDIO_URL")
+LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL")
+LMSTUDIO_CONTEXT_SIZE = os.getenv("LMSTUDIO_CONTEXT_SIZE", "")
+CONTEXT_SIZE_PER_REQUEST = os.getenv("CONTEXT_SIZE_PER_REQUEST", "0")
+CONTEXT_SIZE_BY_MODEL_LOAD = os.getenv("CONTEXT_SIZE_BY_MODEL_LOAD", "0") == "1"
+
+# Output config
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", "")
+OUTPUT_INTO_SAME_DIR = os.getenv("OUTPUT_INTO_SAME_DIR", "true").lower() == "true"
+OVERWRITE_OUTPUT_FILES = os.getenv("OVERWRITE_OUTPUT_FILES", "0") == "1"
+KEEP_TEMP_FILES = os.getenv("KEEP_TEMP_FILES", "0") == "1"
+
+# Prompt config
+OCR_PROMPT = os.getenv("OCR_PROMPT", "")
+OCR_PROMPT_FILE = os.getenv("OCR_PROMPT_FILE", "")
+
+# Multi-page config
+MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
+
+def load_prompt(env_key: str, file_key: str, default: str) -> str:
+    """Load prompt from .env or from file."""
+    prompt = os.getenv(env_key, "")
+    file_path = os.getenv(file_key, "")
+    
+    if file_path and Path(file_path).exists():
+        return Path(file_path).read_text(encoding="utf-8").strip()
+    elif prompt:
+        return prompt
+    else:
+        return default
+
+# Prompt for OCR
+OCR_PROMPT_TEXT = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE", "Convert this image to markdown")
+
+# Test config
 TEST_PDF = os.getenv("TEST_PDF")
 SCALE = 2.0
+
+# Debug config
+VERBOSE = int(os.getenv("VERBOSE", "0"))
+
+def debug(level: int, *args):
+    """Print debug message if VERBOSE >= level."""
+    if VERBOSE >= level:
+        print(f"[DEBUG:{level}]", *args)
+
+# Global for loaded model instance
+LMSTUDIO_INSTANCE_ID = ""
+
+def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, source_file: str = "", temp_filenames: list[str] = None) -> str:
+    """Replace placeholders in prompt."""
+    if temp_filenames is None:
+        temp_filenames = []
+    
+    result = prompt
+    result = result.replace("{total_pages}", str(total_pages))
+    result = result.replace("{current_page}", str(current_page))
+    result = result.replace("{source_file}", source_file)
+    result = result.replace("{temp_filenames}", ", ".join(temp_filenames))
+    return result
 
 import httpx
 import pypdfium2
 
-def ping():
+# Determine which provider to use
+if USE_LMSTUDIO:
+    PROVIDER = "LM Studio"
+    URL = LMSTUDIO_URL
+    MODEL = LMSTUDIO_MODEL
+elif USE_OLLAMA:
+    PROVIDER = "Ollama"
+    URL = OLLAMA_URL
+    MODEL = OLLAMA_MODEL
+else:
+    print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
+    exit(1)
+
+print(f"Using: {PROVIDER}")
+print(f"URL: {URL}")
+print(f"Model: {MODEL}")
+
+
+def ping() -> bool:
+    """Check if LLM is reachable."""
     client = httpx.Client(timeout=10)
     try:
-        resp = client.get(f"{URL}/api/tags")
-        return resp.status_code == 200
+        if USE_LMSTUDIO:
+            resp = client.get(f"{URL}/v1/models")
+            return resp.status_code == 200
+        else:
+            resp = client.get(f"{URL}/api/tags")
+            return resp.status_code == 200
     except:
         return False
 
-def get_models():
+
+def get_models() -> list:
+    """Get available models."""
     client = httpx.Client(timeout=10)
-    resp = client.get(f"{URL}/api/tags")
-    resp.raise_for_status()
-    return resp.json()["models"]
+    if USE_LMSTUDIO:
+        resp = client.get(f"{URL}/v1/models")
+        resp.raise_for_status()
+        return resp.json()["data"]
+    else:
+        resp = client.get(f"{URL}/api/tags")
+        resp.raise_for_status()
+        return resp.json()["models"]
 
-def get_running_models():
+
+def find_loaded_model() -> str:
+    """Find already loaded model with matching context_length."""
+    if not USE_LMSTUDIO or not LMSTUDIO_CONTEXT_SIZE:
+        return ""
+    
     client = httpx.Client(timeout=10)
-    resp = client.get(f"{URL}/api/ps")
-    resp.raise_for_status()
-    return resp.json()["models"]
+    # resp = client.get(f"{URL}/api/v1/models")
+    resp = client.get(f"{URL}/api/v1/models")
+    if resp.status_code != 200:
+        return ""
+    
+    models = resp.json().get("data", [])
+    target_ctx = int(LMSTUDIO_CONTEXT_SIZE)
+    model_base = MODEL.split("/")[-1].split(":")[0]
+    
+    for m in models:
+        cfg = m.get("load_config", {})
+        loaded_ctx = cfg.get("context_length", 0)
+        model_id = m.get("id", "")
+        
+        # Prüfe: gleiche context_length UND gleiches Modell
+        if loaded_ctx == target_ctx and model_base in model_id:
+            return model_id
+    
+    return ""
 
-def send_prompt(prompt: str) -> str:
-    client = httpx.Client(timeout=120)
-    resp = client.post(
-        f"{URL}/api/generate",
-        json={"model": MODEL, "prompt": prompt, "keep_alive": KEEP_ALIVE, "stream": False},
-    )
-    resp.raise_for_status()
-    return resp.json()["response"]
 
-def send_prompt_with_image(image_path: Path, prompt: str) -> str:
-    """Send image + text prompt, return response."""
-    image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+def load_model() -> None:
+    """Load model with context_length before chat."""
+    global LMSTUDIO_INSTANCE_ID
+    
+    if not USE_LMSTUDIO or not LMSTUDIO_CONTEXT_SIZE:
+        return
+    if not CONTEXT_SIZE_BY_MODEL_LOAD:
+        return
+    
+    # ZUERST: Prüfen ob Modell bereits mit passender context_length geladen
+    existing_id = find_loaded_model()
+    if existing_id:
+        LMSTUDIO_INSTANCE_ID = existing_id
+        print(f"[OK] Using existing model with context_length: {LMSTUDIO_CONTEXT_SIZE}")
+        return
+    
+    # Nicht gefunden: neu laden
     client = httpx.Client(timeout=120)
+    target_ctx = int(LMSTUDIO_CONTEXT_SIZE)
     resp = client.post(
-        f"{URL}/api/generate",
+        f"{URL}/api/v1/models/load",
         json={
             "model": MODEL,
-            "prompt": prompt,
-            "images": [image_b64],
-            "keep_alive": KEEP_ALIVE,
-            "stream": False
-        },
+            "context_length": target_ctx
+        }
     )
-    resp.raise_for_status()
-    return resp.json()["response"]
+    if resp.status_code == 200:
+        data = resp.json()
+        loaded_ctx = data.get("load_config", {}).get("context_length", "?")
+        LMSTUDIO_INSTANCE_ID = data.get("instance_id", "")
+        print(f"[OK] Model loaded with context_length: {loaded_ctx}, instance_id: {LMSTUDIO_INSTANCE_ID}")
+    elif resp.status_code == 409:
+        # Unloading and then loading again
+        client2 = httpx.Client(timeout=60)
+        unload_resp = client2.post(
+            f"{URL}/api/v1/models/unload",
+            json={"model": MODEL}
+        )
+        # Try loading again
+        resp = client.post(
+            f"{URL}/api/v1/models/load",
+            json={"model": MODEL, "context_length": target_ctx}
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            LMSTUDIO_INSTANCE_ID = data.get("instance_id", "")
+            print(f"[OK] Model loaded with context_length: {target_ctx}")
+    else:
+        resp.raise_for_status()
+
+
+def send_prompt(prompt: str) -> str:
+    """Send text prompt, return response."""
+    client = httpx.Client(timeout=120)
+    
+    if USE_LMSTUDIO:
+        # LM Studio uses OpenAI-compatible API
+        # Use instance_id if loaded with custom context
+        model_to_use = LMSTUDIO_INSTANCE_ID if LMSTUDIO_INSTANCE_ID else MODEL
+        payload = {
+            "model": model_to_use,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False
+        }
+        if LMSTUDIO_CONTEXT_SIZE and CONTEXT_SIZE_PER_REQUEST == "1":
+            payload["max_tokens"] = int(LMSTUDIO_CONTEXT_SIZE)
+            debug(3, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
+        
+        resp = client.post(
+            f"{URL}/v1/chat/completions",
+            json=payload,
+        )
+        resp.raise_for_status()
+        resp_json = resp.json()
+        
+        # Debug output for context size verification
+        debug(3, f"Response keys: {list(resp_json.keys())}")
+        debug(3, f"Model: {resp_json.get('model')}")
+        debug(3, f"Created: {resp_json.get('created')}")
+        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
+        debug(3, f"Prompt eval duration (ns): {resp_json.get('prompt_eval_duration')}")
+        debug(3, f"Eval duration (ns): {resp_json.get('eval_duration')}")
+        
+        # Token usage
+        usage = resp_json.get("usage", {})
+        debug(3, f"Usage: prompt_tokens={usage.get('prompt_tokens')}, completion_tokens={usage.get('completion_tokens')}, total_tokens={usage.get('total_tokens')}")
+        
+        response_text = resp_json["choices"][0]["message"]["content"]
+        debug(3, f"Response length: {len(response_text)} chars")
+        return response_text
+    else:
+        # Ollama API
+        resp = client.post(
+            f"{URL}/api/generate",
+            json={
+                "model": MODEL,
+                "prompt": prompt,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "stream": False
+            },
+        )
+        resp.raise_for_status()
+        resp_json = resp.json()
+        
+        # Debug output
+        debug(3, f"Ollama response keys: {list(resp_json.keys())}")
+        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
+        debug(3, f"Load duration (ns): {resp_json.get('load_duration')}")
+        
+        return resp_json["response"]
+
+
+def send_prompt_with_image(image_path: Path, prompt: str) -> str:
+    """Send single image + text prompt, return response."""
+    image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+    return send_prompt_with_multiple_images([image_path], prompt)
+
+
+def send_prompt_with_multiple_images(image_paths: list[Path], prompt: str) -> str:
+    """Send multiple images + text prompt, return response."""
+    images_b64 = [base64.b64encode(p.read_bytes()).decode() for p in image_paths]
+    total_image_size = sum(len(b64) for b64 in images_b64)
+    client = httpx.Client(timeout=180)
+    
+    if USE_LMSTUDIO:
+        # LM Studio: OpenAI-compatible vision API
+        # Build content: text + all images
+        content = [{"type": "text", "text": prompt}]
+        for img_b64 in images_b64:
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}})
+        
+        # Use instance_id if loaded with custom context
+        model_to_use = LMSTUDIO_INSTANCE_ID if LMSTUDIO_INSTANCE_ID else MODEL
+        payload = {
+            "model": model_to_use,
+            "messages": [{"role": "user", "content": content}],
+            "stream": False
+        }
+        
+        # Add max_tokens if set (CONTEXT_SIZE_PER_REQUEST)
+        if LMSTUDIO_CONTEXT_SIZE and CONTEXT_SIZE_PER_REQUEST == "1":
+            payload["max_tokens"] = int(LMSTUDIO_CONTEXT_SIZE)
+            debug(3, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
+        
+        resp = client.post(
+            f"{URL}/v1/chat/completions",
+            json=payload,
+        )
+        resp.raise_for_status()
+        resp_json = resp.json()
+        
+        # Debug output for context size verification
+        debug(3, f"Image data size: {total_image_size:,} bytes ({total_image_size//1024} KB)")
+        debug(3, f"Response keys: {list(resp_json.keys())}")
+        debug(3, f"Model: {resp_json.get('model')}")
+        debug(3, f"Created: {resp_json.get('created')}")
+        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
+        debug(3, f"Prompt eval duration (ns): {resp_json.get('prompt_eval_duration')}")
+        debug(3, f"Eval duration (ns): {resp_json.get('eval_duration')}")
+        
+        # Token usage (CRITICAL for CONTEXT_SIZE_PER_REQUEST verification)
+        usage = resp_json.get("usage", {})
+        debug(3, f"Usage: prompt_tokens={usage.get('prompt_tokens')}, completion_tokens={usage.get('completion_tokens')}, total_tokens={usage.get('total_tokens')}")
+        
+        response_text = resp_json["choices"][0]["message"]["content"]
+        debug(3, f"Response length: {len(response_text)} chars")
+        return response_text
+    else:
+        # Ollama API with images
+        resp = client.post(
+            f"{URL}/api/generate",
+            json={
+                "model": MODEL,
+                "prompt": prompt,
+                "images": images_b64,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "stream": False
+            },
+        )
+        resp.raise_for_status()
+        resp_json = resp.json()
+        
+        # Debug output
+        debug(3, f"Ollama response keys: {list(resp_json.keys())}")
+        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
+        
+        return resp_json["response"]
+
 
 def pdf_to_images(pdf_path: Path) -> list[Path]:
     """Convert PDF pages to PNG images."""
@@ -84,54 +364,34 @@ def pdf_to_images(pdf_path: Path) -> list[Path]:
     pdf.close()
     return images
 
-# Step 1: Connection
-print(f"URL: {URL}")
-print(f"Model: {MODEL}")
 
+# Step 1: Connection
 if ping():
-    print("[OK] Connected to Ollama")
+    print(f"[OK] Connected to {PROVIDER}")
 else:
-    print("[FAIL] Cannot connect to Ollama")
+    print(f"[FAIL] Cannot connect to {PROVIDER}")
     exit(1)
 
 # Check available models
 print("\nAvailable models:")
 models = get_models()
-for m in models:
-    name = m.get("name", "?")
-    size = m.get("size", 0) // (1024*1024*1024)
-    print(f"  - {name} ({size:.1f} GB)")
-
-# Check if desired model is available
-model_base = MODEL.split(":")[0]
-available = any(m.get("name", "").startswith(model_base) for m in models)
-if available:
-    print(f"\n[OK] Model '{MODEL}' is available")
+if USE_LMSTUDIO:
+    for m in models:
+        name = m.get("id", "?")
+        print(f"  - {name}")
 else:
-    print(f"\n[WARN] Model '{MODEL}' not found")
-
-# Check running models
-print("\nRunning models (in memory):")
-running = get_running_models()
-if running:
-    for m in running:
+    for m in models:
         name = m.get("name", "?")
-        expires = m.get("expires_at", "?")
-        print(f"  - {name} (until {expires})")
-else:
-    print("  (none)")
+        size = m.get("size", 0) // (1024*1024*1024)
+        print(f"  - {name} ({size:.1f} GB)")
 
-# Check if desired model is running
-running_names = [m.get("name", "") for m in running]
-running = any(model_base in name for name in running_names)
-if running:
-    print(f"\n[OK] Model '{MODEL}' is RUNNING")
-else:
-    print(f"\n[WARN] Model '{MODEL}' is NOT running (will be loaded on first prompt)")
+# Load model with context_length (if enabled)
+if USE_LMSTUDIO and LMSTUDIO_CONTEXT_SIZE:
+    load_model()
 
 # Step 2: Text prompt
 print("\nSending prompt...")
-response = send_prompt("Say 'Hello from Ollama and Python!' in exactly those words.")
+response = send_prompt(f"Say 'Hello from {PROVIDER} and Python!' in exactly those words.")
 print(f"Response: {response}")
 
 # Step 3: PDF → Images
@@ -139,13 +399,84 @@ print(f"\nConverting PDF to images: {TEST_PDF}")
 images = pdf_to_images(Path(TEST_PDF))
 print(f"[OK] {len(images)} page(s) saved to temp_images/")
 
-# Step 4: Image → Markdown (nur Seite 1)
-print("\nSending image to LLM (page 1)...")
-first_image = images[0]
-md = send_prompt_with_image(first_image, "Convert this image to Markdown.")
-print(f"\nMarkdown (page 1):\n{md}")
+# Step 4: Image → Markdown (mit MAX_PAGES_PER_REQUEST)
+total_pages = len(images)
+source_file = Path(TEST_PDF).name
+temp_filenames = [img.name for img in images]
+print(f"\nConverting {total_pages} pages to Markdown...")
 
-# # Step 5: Save Markdown
-# # # Step 5: Images (MVP)
-# # # Step 4: Text → Markdown
-# # # Step 5: Images (MVP)
+# Prüfe Schwellwert
+if total_pages <= MAX_PAGES_PER_REQUEST:
+    # Single request mit allen Seiten
+    print(f"  Using single request (pages <= {MAX_PAGES_PER_REQUEST})")
+    prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, source_file=source_file, temp_filenames=temp_filenames)
+    md = send_prompt_with_multiple_images(images, prompt_with_vars)
+    all_markdowns = [md]
+else:
+    # Multiple requests (seite für Seite)
+    print(f"  Using multiple requests (pages > {MAX_PAGES_PER_REQUEST})")
+    all_markdowns = []
+    for i, img in enumerate(images, 1):
+        print(f"  Page {i}/{total_pages}...")
+        prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, i, source_file, temp_filenames)
+        md = send_prompt_with_image(img, prompt_with_vars)
+        all_markdowns.append(md)
+        print(f"    Done: {len(md)} chars")
+
+# Step 5: Save Markdown
+print("\nSaving Markdown...")
+
+# Bestimme Output-Pfad
+input_path = Path(TEST_PDF)
+if OUTPUT_INTO_SAME_DIR:
+    output_path = input_path.with_suffix(".md")
+else:
+    output_path = Path(OUTPUT_DIR) / input_path.with_suffix(".md").name
+
+# Prüfe ob Datei bereits existiert
+if output_path.exists():
+    if OVERWRITE_OUTPUT_FILES:
+        print(f"[WARN] Overwriting: {output_path}")
+    else:
+        print(f"[ERROR] File already exists: {output_path}")
+        exit(1)
+
+# Speichere Markdown
+if len(all_markdowns) == 1:
+    # Single request: kein Trenner nötig
+    output_md = all_markdowns[0]
+else:
+    # Multiple requests: mit Trenner
+    output_md = "\n\n---\n\n".join(all_markdowns)
+
+# Remove markdown code fences from LLM response
+output_md = output_md.strip()
+if output_md.startswith("```markdown"):
+    output_md = output_md[len("```markdown"):]
+elif output_md.startswith("```"):
+    output_md = output_md[len("```"):]
+if output_md.endswith("```"):
+    output_md = output_md[:-3]
+output_md = output_md.strip()
+
+output_path.write_text(output_md, encoding="utf-8")
+print(f"[OK] Saved: {output_path}")
+
+# Cleanup temp images
+if not KEEP_TEMP_FILES:
+    shutil.rmtree("temp_images")
+    print("[OK] Cleaned up temp_images/")
+else:
+    print(f"[INFO] Kept temp_images/")
+
+# Unload model if loaded via CONTEXT_SIZE_BY_MODEL_LOAD
+if CONTEXT_SIZE_BY_MODEL_LOAD and LMSTUDIO_INSTANCE_ID and USE_LMSTUDIO:
+    unload_client = httpx.Client(timeout=30)
+    unload_resp = unload_client.post(
+        f"{URL}/api/v1/models/unload",
+        json={"instance_id": LMSTUDIO_INSTANCE_ID}
+    )
+    if unload_resp.status_code == 200:
+        print(f"[OK] Model unloaded: {LMSTUDIO_INSTANCE_ID}")
+    else:
+        print(f"[WARN] Unload failed: {unload_resp.status_code}")
