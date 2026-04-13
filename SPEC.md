@@ -58,6 +58,44 @@ OUTPUT_INCLUDE_METADATA=0       # 1 = Metadata-Kommentar am Dateianfang (siehe u
 TEST_PDF=exampledata/test.pdf
 ```
 
+## CLI Parameters
+
+Alle ENV-Variablen können per CLI überschrieben werden. Parameter-Namen sind identisch mit ENV-Variablen (inkl. Capslock).
+
+```bash
+python run.py --OLLAMA_MODEL gemma3:4b --OUTPUT_INCLUDE_METADATA 1
+```
+
+**Beispiel für Testreihe:**
+```bash
+for model in gemma3:4b qwen2.5:7b llama3.1:8b; do
+  python run.py --OLLAMA_MODEL $model --FILENAME_INCLUDE_MODEL_TAG 1
+done
+```
+
+| CLI-Parameter | Überschreibt ENV |
+|--------------|------------------|
+| --USE_OLLAMA | USE_OLLAMA |
+| --USE_LMSTUDIO | USE_LMSTUDIO |
+| --OLLAMA_URL | OLLAMA_URL |
+| --OLLAMA_MODEL | OLLAMA_MODEL |
+| --OLLAMA_KEEP_ALIVE | OLLAMA_KEEP_ALIVE |
+| --LMSTUDIO_URL | LMSTUDIO_URL |
+| --LMSTUDIO_MODEL | LMSTUDIO_MODEL |
+| --LMSTUDIO_CONTEXT_SIZE | LMSTUDIO_CONTEXT_SIZE |
+| --CONTEXT_SIZE_BY_MODEL_LOAD | CONTEXT_SIZE_BY_MODEL_LOAD |
+| --CONTEXT_SIZE_PER_REQUEST | CONTEXT_SIZE_PER_REQUEST |
+| --MAX_PAGES_PER_REQUEST | MAX_PAGES_PER_REQUEST |
+| --OCR_PROMPT | OCR_PROMPT |
+| --OCR_PROMPT_FILE | OCR_PROMPT_FILE |
+| --OUTPUT_DIR | OUTPUT_DIR |
+| --OUTPUT_INTO_SAME_DIR | OUTPUT_INTO_SAME_DIR |
+| --OVERWRITE_OUTPUT_FILES | OVERWRITE_OUTPUT_FILES |
+| --KEEP_TEMP_FILES | KEEP_TEMP_FILES |
+| --FILENAME_INCLUDE_MODEL_TAG | FILENAME_INCLUDE_MODEL_TAG |
+| --OUTPUT_INCLUDE_METADATA | OUTPUT_INCLUDE_METADATA |
+| --TEST_PDF | TEST_PDF |
+
 ## Output Metadata-Tag (bei OUTPUT_INCLUDE_METADATA=1)
 
 ```markdown
@@ -189,6 +227,7 @@ ALWAYS start with the MINIMUM viable implementation:
 - [ ] Model-Name aus Config lesen (OLLAMA_MODEL oder LMSTUDIO_MODEL)
 - [ ] Provider-Debug-Info (prompt_tokens, completion_tokens, total_tokens) aus Response extrahieren
 - [ ] Prompt-File-Name aus OCR_PROMPT_FILE extrahieren
+- [ ] **CLI-Parameter**: Alle ENV-Variablen per CLI überschreibbar (gleiche Namen, inkl. Capslock)
 
 ### Step 9: 2-Phase Approach (NOT IMPLEMENTED)
 - [ ] Phase 1: Extract metadata from all pages at once
