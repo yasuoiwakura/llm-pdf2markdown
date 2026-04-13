@@ -51,7 +51,24 @@ OUTPUT_INTO_SAME_DIR=true
 OVERWRITE_OUTPUT_FILES=0
 KEEP_TEMP_FILES=0
 
+# Output-Tagging für Tuning-Vergleich
+FILENAME_INCLUDE_MODEL_TAG=0    # 1 = [model_name] im Dateinamen, z.B. test[gemma3-4b].md
+OUTPUT_INCLUDE_METADATA=0       # 1 = Metadata-Kommentar am Dateianfang (siehe unten)
+
 TEST_PDF=exampledata/test.pdf
+```
+
+## Output Metadata-Tag (bei OUTPUT_INCLUDE_METADATA=1)
+
+```markdown
+<!--
+model: gemma3-4b
+provider: lmstudio
+prompt_file: ocr_prompt_detailed.md
+context_configured: 16384
+usage: prompt_tokens=1226, completion_tokens=1261, total_tokens=2487
+pages: 3
+-->
 ```
 
 ## Known Issues
@@ -61,7 +78,8 @@ TEST_PDF=exampledata/test.pdf
 | Feature | Status | Hinweis |
 |---------|--------|--------|
 | `CONTEXT_SIZE_BY_MODEL_LOAD=1` | ⚠️ nicht empfohlen | Langsam, kein Query der geladenen Modelle möglich |
-| `CONTEXT_SIZE_PER_REQUEST=1` | ? ungetestet | Response enthält keine debug infos zur context size |
+| `CONTEXT_SIZE_PER_REQUEST=1` | ❌ broken | Funktioniert nicht wie erwartet |
+| `LMSTUDIO_CONTEXT_SIZE` | ⚠️ partly working | Wird manchmal ignoriert, Context-Size muss manuell im LM Studio eingestellt werden |
 
 **Empfehlung:** 
 - Modell **manuell in LM Studio GUI** mit gewünschter Context-Size laden
@@ -130,8 +148,9 @@ ALWAYS start with the MINIMUM viable implementation:
 | 4 | Images → Markdown via LLM | ✓ done |
 | 5 | Save Markdown file | ✓ done |
 | 6 | Custom Prompts from .env or FILE | ✓ done |
-| 7 | **Multi-page: All pages in single request** | **current** |
-| 8 | Multi-page: 2-phase (metadata + content) | **prepared, not implemented** |
+| 7 | Multi-page: All pages in single request | ✓ done |
+| 8 | **Output-Tagging für Tuning** | **current** |
+| 9 | Multi-page: 2-phase (metadata + content) | pending |
 
 ### Step 1: Connection
 - [x] Connects to URL based on USE_OLLAMA / USE_LMSTUDIO
@@ -164,7 +183,14 @@ ALWAYS start with the MINIMUM viable implementation:
 - [ ] Prompt includes page context (page X of Y)
 - [ ] Extract metadata from first page
 
-### Step 8: 2-Phase Approach (NOT IMPLEMENTED)
+### Step 8: Output-Tagging für Tuning (Current)
+- [ ] Implement FILENAME_INCLUDE_MODEL_TAG=1 → [model_name] im Dateinamen
+- [ ] Implement OUTPUT_INCLUDE_METADATA=1 → Metadata-Kommentar am Dateianfang
+- [ ] Model-Name aus Config lesen (OLLAMA_MODEL oder LMSTUDIO_MODEL)
+- [ ] Provider-Debug-Info (prompt_tokens, completion_tokens, total_tokens) aus Response extrahieren
+- [ ] Prompt-File-Name aus OCR_PROMPT_FILE extrahieren
+
+### Step 9: 2-Phase Approach (NOT IMPLEMENTED)
 - [ ] Phase 1: Extract metadata from all pages at once
 - [ ] Phase 2: Extract content page-by-page
 - [ ] Merge metadata + content
