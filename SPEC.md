@@ -95,6 +95,36 @@ Das 3-stufige Verfahren sorgt für maximale Vollständigkeit bei minimaler Hallu
   - KEINE Zusammenfassung
   - Alles was im Bild steht, muss im Markdown stehen
 
+### Step 1: Output Format (Page Markers)
+
+Das Markdown wird mit Page-Markern strukturiert:
+
+```
+# page 1/3
+
+<!-- start content page 1 of 3 -->
+[Content Seite 1]
+<!-- end content page 1 of 3 -->
+
+# page 2/3
+
+<!-- start content page 2 of 3 -->
+[Content Seite 2]
+<!-- end content page 2 of 3 -->
+
+# page 3/3
+
+<!-- start content page 3 of 3 -->
+[Content Seite 3]
+<!-- end content page 3 of 3 -->
+```
+
+**LLM-Regel:** Header ab `##` (nicht `#`) - `#` ist für Page-Marker reserviert.
+
+**Python:** Fügt `# page n/total` + `<!-- start/end content -->` zwischen Seiten ein.
+
+**Output-Dateiname:** `[filename]_single_pages.md`
+
 ### Step 2: Metadaten-Extraktion (Step 2)
 
 - **Input:** Alle Seiten als Rastergrafik (1 Call)

@@ -13,6 +13,8 @@ STRICT RULES:
 - Include EVERY word visible in the image exactly as shown
 - Include signatures, stamps, handwritten marks as: [SIGNATURE: description]
 - Use plain Markdown format (headings, lists, tables)
+- Use headings starting with ## (h2) or lower for structure
+- DO NOT use h1 (#) headings - those are reserved for page markers
 - NO explanations, NO notes, NO comments
 
 Output: Plain Markdown only.
