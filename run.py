@@ -181,7 +181,8 @@ def find_loaded_model() -> str:
 def load_model() -> None:
     """Load model with context_length before chat."""
     global LMSTUDIO_INSTANCE_ID
-    
+    global CONTEXT_SIZE_BY_MO2DEL_LOAD
+
     if not USE_LMSTUDIO or not LMSTUDIO_CONTEXT_SIZE:
         return
     if not CONTEXT_SIZE_BY_MODEL_LOAD:
