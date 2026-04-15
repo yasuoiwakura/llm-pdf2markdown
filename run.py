@@ -23,8 +23,8 @@ def bool_from_env(env_name: str, default: bool = False) -> bool:
         return default
 
 # LLM Provider config
-USE_OLLAMA = os.getenv("USE_OLLAMA", "true").lower() == "true"
-USE_LMSTUDIO = os.getenv("USE_LMSTUDIO", "false").lower() == "true"
+USE_OLLAMA = bool_from_env("USE_OLLAMA", True)
+USE_LMSTUDIO = bool_from_env("USE_LMSTUDIO", False)
 
 # Ollama config
 OLLAMA_URL = os.getenv("OLLAMA_URL")
@@ -36,13 +36,13 @@ LMSTUDIO_URL = os.getenv("LMSTUDIO_URL")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL")
 LMSTUDIO_CONTEXT_SIZE = os.getenv("LMSTUDIO_CONTEXT_SIZE", "")
 CONTEXT_SIZE_PER_REQUEST = os.getenv("CONTEXT_SIZE_PER_REQUEST", "0")
-CONTEXT_SIZE_BY_MODEL_LOAD = os.getenv("CONTEXT_SIZE_BY_MODEL_LOAD", "0") == "1"
+CONTEXT_SIZE_BY_MODEL_LOAD = bool_from_env("CONTEXT_SIZE_BY_MODEL_LOAD", False)
 
 # Output config
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "")
-OUTPUT_INTO_SAME_DIR = os.getenv("OUTPUT_INTO_SAME_DIR", "true").lower() == "true"
-OVERWRITE_OUTPUT_FILES = os.getenv("OVERWRITE_OUTPUT_FILES", "0") == "1"
-KEEP_TEMP_FILES = os.getenv("KEEP_TEMP_FILES", "0") == "1"
+OUTPUT_INTO_SAME_DIR = bool_from_env("OUTPUT_INTO_SAME_DIR", True)
+OVERWRITE_OUTPUT_FILES = bool_from_env("OVERWRITE_OUTPUT_FILES", False)
+KEEP_TEMP_FILES = bool_from_env("KEEP_TEMP_FILES", False)
 
 # Prompt config
 OCR_PROMPT = os.getenv("OCR_PROMPT", "")
@@ -52,7 +52,7 @@ OCR_PROMPT_FILE = os.getenv("OCR_PROMPT_FILE", "")
 MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
 
 # Multi-phase config
-MULTIPHASE_MODE = os.getenv("MULTIPHASE_MODE", "0") == "1"
+MULTIPHASE_MODE = bool_from_env("MULTIPHASE_MODE", False)
 OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
 OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
 OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
@@ -120,9 +120,8 @@ else:
     print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
     exit(1)
 
-print(f"Using: {PROVIDER}")
-print(f"URL: {URL}")
-print(f"Model: {MODEL}")
+# Zeige Konfiguration in einer Zeile bei verbose >= 1
+debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {MODEL}")
 
 
 def ping() -> bool:
