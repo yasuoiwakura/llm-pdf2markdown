@@ -58,6 +58,11 @@ OUTPUT_INCLUDE_METADATA=0       # 1 = Metadata-Kommentar am Dateianfang (siehe u
 # Multi-phase Processing
 MULTIPHASE_MODE=0    # 1 = 3-phase processing (step1+2+3), 0 = single-pass
 
+# Step 1: Separate model for OCR (halluzinationsfreies Modell)
+MULTIPHASE_MODEL_STEP1_OCR=glm-ocr@f16
+# Falls gesetzt und != LMSTUDIO_MODEL → separate LLM-Instanz für Step 1
+# Falls nicht gesetzt oder == LMSTUDIO_MODEL → verwende default_client
+
 # Step 1: Plain OCR (einzelne Seiten)
 OCR_PROMPT_FILE_STEP1=prompts/multiphase_step1_ocr.md
 
@@ -168,6 +173,7 @@ python run.py --OLLAMA_MODEL gemma3-4b --OUTPUT_INCLUDE_METADATA 1 --MULTIPHASE_
 | --OCR_PROMPT | OCR_PROMPT |
 | --OCR_PROMPT_FILE | OCR_PROMPT_FILE |
 | --MULTIPHASE_MODE | MULTIPHASE_MODE |
+| --MULTIPHASE_MODEL_STEP1_OCR | MULTIPHASE_MODEL_STEP1_OCR |
 | --OUTPUT_DIR | OUTPUT_DIR |
 | --OUTPUT_INTO_SAME_DIR | OUTPUT_INTO_SAME_DIR |
 | --OVERWRITE_OUTPUT_FILES | OVERWRITE_OUTPUT_FILES |
@@ -269,9 +275,200 @@ def step3_finalize(single_pages_md_path, metadata_yaml_path, prompt) -> str:
 
 ```
 llm_pdf2markdown/
-├── __init__.py   # LLM client (Ollama & LM Studio)
-├── client.py     # LLM client implementation
-└── pdf.py        # PDF converter
+├── __init__.py           # Exports
+├── config.py             # Config loader (ENV + CLI)
+├── clients/
+│   ├── __init__.py       # Client factory + exports
+│   ├── base.py           # Abstract LLMClient (ABC)
+│   ├── ollama.py         # Ollama implementation
+│   └── lmstudio.py       # LM Studio implementation
+├── manager.py            # LLMManager (Instanz-Management)
+├── client.py             # Legacy (alias für Rückwärtskompatibilität)
+└── pdf.py                # PDF converter
+```
+
+## LLM Client Abstraktion
+
+### Ziel
+- Saubere Trennung zwischen API-Logik und Hauptskript
+- Flexibles Laden verschiedener Modelle/Provider pro Step
+- Mehrere LLM-Instanzen parallel verwaltbar
+
+### Architektur: clients/base.py
+
+```python
+from abc import ABC, abstractmethod
+from pathlib import Path
+
+class LLMClient(ABC):
+    """Abstract base class for all LLM clients."""
+    
+    model: str           # Modellname
+    provider: str        # "ollama" oder "lmstudio"
+    
+    @abstractmethod
+    def generate(self, prompt: str) -> str:
+        """Text-only prompt → response."""
+    
+    @abstractmethod
+    def generate_with_image(self, image_path: Path, prompt: str) -> str:
+        """Image + prompt → markdown response."""
+    
+    @abstractmethod
+    def get_usage(self) -> dict:
+        """Return: {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int}"""
+    
+    @abstractmethod
+    def close(self):
+        """Cleanup resources."""
+    
+    @abstractmethod
+    def ping(self) -> bool:
+        """Check connection."""
+```
+
+### clients/ollama.py
+
+```python
+from .base import LLMClient
+
+class OllamaClient(LLMClient):
+    def __init__(self, url: str, model: str, keep_alive: str = "30m"):
+        self.url = url
+        self.model = model
+        self.provider = "ollama"
+        self._client = httpx.Client(...)
+    
+    # Implementiert alle abstract methods
+    # API: POST /api/generate
+```
+
+### clients/lmstudio.py
+
+```python
+from .base import LLMClient
+
+class LMStudioClient(LLMClient):
+    def __init__(self, url: str, model: str, context_size: int = 4096):
+        self.url = url
+        self.model = model
+        self.provider = "lmstudio"
+        self._client = httpx.Client(...)
+    
+    # Implementiert alle abstract methods
+    # API: POST /v1/chat/completions (OpenAI-kompatibel)
+    # get_usage() → aus response["usage"] extrahieren
+```
+
+### clients/__init__.py (Factory)
+
+```python
+def create_client(provider: str, model: str, config: dict) -> LLMClient:
+    """Factory: Erstellt passenden Client basierend auf provider."""
+    if provider == "ollama":
+        return OllamaClient(
+            url=config["OLLAMA_URL"],
+            model=model,
+            keep_alive=config.get("OLLAMA_KEEP_ALIVE", "30m")
+        )
+    elif provider == "lmstudio":
+        return LMStudioClient(
+            url=config["LMSTUDIO_URL"],
+            model=model,
+            context_size=config.get("LMSTUDIO_CONTEXT_SIZE", 4096)
+        )
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+```
+
+### manager.py (Instanz-Management)
+
+```python
+from .clients import create_client
+
+class LLMManager:
+    """Verwaltet LLM-Instanzen für verschiedene Steps."""
+    
+    def __init__(self, config: dict):
+        self.config = config
+        self.default_client: LLMClient = None  # Für Step 2+3
+        self.step1_client: LLMClient = None    # Für Step 1 (falls verschieden)
+    
+    def init_clients(self, provider: str):
+        """Initialisiert Clients basierend auf MULTIPHASE_MODE."""
+        
+        # Default-Client für Step 2+3
+        default_model = provider == "ollama" and config.get("OLLAMA_MODEL") or config.get("LMSTUDIO_MODEL")
+        self.default_client = create_client(provider, default_model, config)
+        
+        # Step 1 Client (nur wenn unterschiedlich)
+        if config.get("MULTIPHASE_MODE") == 1:
+            step1_model = config.get("MULTIPHASE_MODEL_STEP1_OCR")
+            if step1_model and step1_model != default_model:
+                self.step1_client = create_client(provider, step1_model, config)
+            else:
+                self.step1_client = self.default_client  # Wiederverwendung
+    
+    def get_client(self, step: int) -> LLMClient:
+        """Gibt passenden Client für Step zurück."""
+        if step == 1:
+            return self.step1_client or self.default_client
+        else:
+            return self.default_client
+    
+    def cleanup_after_step1(self):
+        """Entlädt step1_client nach Step 1 falls != default_client."""
+        if self.step1_client and self.step1_client != self.default_client:
+            self.step1_client.close()
+            self.step1_client = None
+    
+    def close_all(self):
+        """Schließt alle Clients."""
+        if self.default_client:
+            self.default_client.close()
+        if self.step1_client and self.step1_client != self.default_client:
+            self.step1_client.close()
+```
+
+### Logik für Instanz-Management
+
+```
+WENN MULTIPHASE_MODE=1 UND MULTIPHASE_MODEL_STEP1_OCR != LMSTUDIO_MODEL:
+    → Lade step1_client mit MULTIPHASE_MODEL_STEP1_OCR
+    → Lade default_client mit LMSTUDIO_MODEL
+    → Step 1 → step1_client
+    → Step 2/3 → default_client
+    → NACH Step 1 → cleanup_after_step1() (entlädt step1_client)
+
+SONST:
+    → Lade nur default_client (wiederverwendet für alle Steps)
+    → Step 1, 2, 3 → default_client
+```
+
+### Coding-LLM Hinweise
+
+**WICHTIG: Implementations-Reihenfolge**
+
+1. **Erst** `clients/base.py` mit ABC definieren
+2. **Dann** `clients/ollama.py` und `clients/lmstudio.py` implementieren
+3. **Dann** `clients/__init__.py` mit Factory-Funktion
+4. **Dann** `manager.py` mit LLMManager
+5. **Zuletzt** `run.py` refaktorieren um LLMManager zu nutzen
+
+**Prinzipien:**
+- Keep it simple: Keine überflüssigen Abstraktionen
+- Single Responsibility: Jede Klasse hat eine klar definierte Aufgabe
+- Rückwärtskompatibilität: `client.py` bleibt als Alias erhalten
+- Test-Driven: Erst Test schreiben, dann implementieren (für komplexere Funktionen)
+
+**Env + CLI Integration:**
+```python
+# config.py
+def load_config():
+    # Lädt .env mit python-dotenv
+    # Parst CLI-Argumente mit argparse (großgeschrieben)
+    # CLI-Argumente überschreiben ENV-Werte
+    return config
 ```
 
 ## Implementation Guidelines
