@@ -510,7 +510,7 @@ else:
     output_dir.mkdir(exist_ok=True)
 
 single_pages_path = output_dir / f"{input_path.stem}_single_pages.md"
-metadata_path = output_dir / "metadata.yaml"
+metadata_path = output_dir / f"{input_path.stem}_metadata.yaml"
 final_output_path = output_dir / f"{input_path.stem}.md"
 
 # Prüfe ob Dateien bereits existieren
