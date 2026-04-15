@@ -4,6 +4,7 @@ import json
 import base64
 from pathlib import Path
 from dotenv import load_dotenv
+import pypdfium2
 
 load_dotenv()
 
@@ -40,6 +41,10 @@ CONFIG = {
     "CONTEXT_SIZE_BY_MODEL_LOAD": bool_from_env("CONTEXT_SIZE_BY_MODEL_LOAD", False),
 }
 
+# LM Studio config
+LMSTUDIO_CONTEXT_SIZE = os.getenv("LMSTUDIO_CONTEXT_SIZE", "")
+CONTEXT_SIZE_BY_MODEL_LOAD = bool_from_env("CONTEXT_SIZE_BY_MODEL_LOAD", False)
+
 # Output config
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "")
 OUTPUT_INTO_SAME_DIR = bool_from_env("OUTPUT_INTO_SAME_DIR", True)
@@ -72,8 +77,8 @@ llm_manager = LLMManager(CONFIG)
 # Determine provider
 if USE_LMSTUDIO:
     PROVIDER = "LM Studio"
-    URL = LMSTUDIO_URL
-    MODEL = LMSTUDIO_MODEL
+    URL = CONFIG["LMSTUDIO_URL"]
+    MODEL = CONFIG["LMSTUDIO_MODEL"]
 elif USE_OLLAMA:
     PROVIDER = "Ollama"
     URL = CONFIG["OLLAMA_URL"]
@@ -144,8 +149,8 @@ llm_manager = LLMManager(CONFIG)
 # Determine provider
 if USE_LMSTUDIO:
     PROVIDER = "LM Studio"
-    URL = LMSTUDIO_URL
-    MODEL = LMSTUDIO_MODEL
+    URL = CONFIG["LMSTUDIO_URL"]
+    MODEL = CONFIG["LMSTUDIO_MODEL"]
 elif USE_OLLAMA:
     PROVIDER = "Ollama"
     URL = CONFIG["OLLAMA_URL"]

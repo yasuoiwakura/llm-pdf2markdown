@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional
-from .clients import create_client, LLMClient
+from clients import create_client, LLMClient
 
 
 class LLMManager:
