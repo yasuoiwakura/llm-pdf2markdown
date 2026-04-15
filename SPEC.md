@@ -478,6 +478,10 @@ ALWAYS start with the MINIMUM viable implementation:
 - Verify it works before adding features
 - NEVER implement multiple features at once
 
+**Virtual Environment:**
+- If `.venv` exists, use it for testing (`source .venv/Scripts/activate` on Windows)
+- Install dependencies: `pip install -r requirements.txt`
+
 ## Implementation Steps
 
 | Step | Description | Status |

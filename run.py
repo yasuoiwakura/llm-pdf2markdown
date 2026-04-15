@@ -320,7 +320,9 @@ def step1_ocr_single_pages(images: list[Path], prompt: str, total_pages: int) ->
     Returns: Markdown mit allen Seiteninhalten (ggf. redundant)
     Mit Page Markern: # page n/total + <!-- start/end content page n of t -->
     """
+    client = llm_manager.get_client(1)
     print(f"\n=== Step 1: Plain OCR (single pages) ===")
+    print(f"[INFO] Model: {client.model}")
     all_pages_md = []
     
     for i, img in enumerate(images, 1):
@@ -358,7 +360,9 @@ def step2_extract_metadata(images: list[Path], prompt: str, total_pages: int) ->
     """Step 2: Metadaten extrahieren.
     Returns: YAML-String mit Metadaten
     """
+    client = llm_manager.get_client(2)
     print(f"\n=== Step 2: Metadata Extraction ===")
+    print(f"[INFO] Model: {client.model}")
     
     page_prompt = replace_prompt_vars(prompt, total_pages)
     md = send_prompt_with_multiple_images(images, page_prompt, step=2)
@@ -381,7 +385,9 @@ def step3_finalize(single_pages_md: str, metadata_yaml: str, prompt: str, total_
     """Step 3: Zusammenführen und bereinigen.
     Returns: Sauberes, zusammenhängendes Markdown mit eingebetteten Metadaten
     """
+    client = llm_manager.get_client(3)
     print(f"\n=== Step 3: Finalization ===")
+    print(f"[INFO] Model: {client.model}")
     
     # Baue Prompt mit Inhalten
     final_prompt = f"""{prompt}
