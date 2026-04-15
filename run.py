@@ -283,11 +283,8 @@ def send_prompt_with_image(image_path: Path, prompt: str, step: int = 1) -> str:
 def send_prompt_with_multiple_images(image_paths: list[Path], prompt: str, step: int = 1) -> str:
     """Send multiple images + text prompt using LLMManager."""
     client = llm_manager.get_client(step)
-    # For multiple images, process sequentially (simplified for now)
-    results = []
-    for img in image_paths:
-        results.append(client.generate_with_image(img, prompt))
-    return "\n\n---\n\n".join(results)
+    # Send all images in a single request
+    return client.generate_with_image(image_paths, prompt)
 
 
 def pdf_to_images(pdf_path: Path) -> list[Path]:

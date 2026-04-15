@@ -45,14 +45,18 @@ class LMStudioClient(LLMClient):
         self._last_usage = data.get("usage", {})
         return data["choices"][0]["message"]["content"]
     
-    def generate_with_image(self, image_path: Path, prompt: str) -> str:
-        image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+    def generate_with_image(self, image_path: Path | list[Path], prompt: str) -> str:
+        # Support single image or multiple images
+        if isinstance(image_path, list):
+            image_paths = image_path
+        else:
+            image_paths = [image_path]
         
-        # Build content: text + image
-        content = [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
-        ]
+        # Build content: text + multiple images
+        content = [{"type": "text", "text": prompt}]
+        for img in image_paths:
+            image_b64 = base64.b64encode(img.read_bytes()).decode()
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}})
         
         model_to_use = self._instance_id if self._instance_id else self.model
         payload = {

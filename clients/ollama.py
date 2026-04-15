@@ -39,14 +39,22 @@ class OllamaClient(LLMClient):
         self._last_usage = {}
         return data.get("response", "")
     
-    def generate_with_image(self, image_path: Path, prompt: str) -> str:
-        image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+    def generate_with_image(self, image_path: Path | list[Path], prompt: str) -> str:
+        # Support single image or multiple images
+        if isinstance(image_path, list):
+            image_paths = image_path
+        else:
+            image_paths = [image_path]
+        
+        # Encode all images
+        images_b64 = [base64.b64encode(img.read_bytes()).decode() for img in image_paths]
+        
         resp = self._client.post(
             f"{self.url}/api/generate",
             json={
                 "model": self.model,
                 "prompt": prompt,
-                "images": [image_b64],
+                "images": images_b64,
                 "keep_alive": self.keep_alive,
                 "stream": False
             },

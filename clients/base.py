@@ -15,8 +15,8 @@ class LLMClient(ABC):
         pass
     
     @abstractmethod
-    def generate_with_image(self, image_path: Path, prompt: str) -> str:
-        """Image + prompt → markdown response."""
+    def generate_with_image(self, image_path: Path | list[Path], prompt: str) -> str:
+        """Single image or list of images + prompt → markdown response."""
         pass
     
     @abstractmethod

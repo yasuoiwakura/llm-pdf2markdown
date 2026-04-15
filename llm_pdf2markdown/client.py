@@ -26,12 +26,16 @@ class OllamaClient:
         resp.raise_for_status()
         return resp.json()["response"]
 
-    def generate_with_image(self, image_path: Path, prompt: str) -> str:
-        """Send image + prompt, return response."""
-        image_b64 = base64.b64encode(image_path.read_bytes()).decode()
+    def generate_with_image(self, image_path: Path | list[Path], prompt: str) -> str:
+        """Send single or multiple images + prompt, return response."""
+        if isinstance(image_path, list):
+            image_paths = image_path
+        else:
+            image_paths = [image_path]
+        images_b64 = [base64.b64encode(img.read_bytes()).decode() for img in image_paths]
         resp = self._client.post(
             f"{self.url}/api/generate",
-            json={"model": self.model, "prompt": prompt, "images": [image_b64], "stream": False},
+            json={"model": self.model, "prompt": prompt, "images": images_b64, "stream": False},
         )
         resp.raise_for_status()
         return resp.json()["response"]
