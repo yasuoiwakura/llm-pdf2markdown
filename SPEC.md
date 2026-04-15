@@ -2,9 +2,9 @@
 
 Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
-## Status: PoC → MVP (Multi-page support)
+## Status: MVP (Multi-phase OCR)
 
-## Run PoC
+## Run
 
 ```bash
 python run.py
@@ -20,7 +20,7 @@ USE_LMSTUDIO=false
 # Ollama (used only if USE_OLLAMA=true)
 # URL: http://localhost:11434, API: /api/generate
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=gemma3:4b
+OLLAMA_MODEL=gemma3-4b
 OLLAMA_KEEP_ALIVE=30m
 
 # LM Studio (used only if USE_LMSTUDIO=true)
@@ -55,22 +55,71 @@ KEEP_TEMP_FILES=0
 FILENAME_INCLUDE_MODEL_TAG=0    # 1 = [model_name] im Dateinamen, z.B. test[gemma3-4b].md
 OUTPUT_INCLUDE_METADATA=0       # 1 = Metadata-Kommentar am Dateianfang (siehe unten)
 
+# Multi-phase Processing
+MULTIPHASE_MODE=0    # 1 = 3-phase processing (step1+2+3), 0 = single-pass
+
+# Step 1: Plain OCR (einzelne Seiten)
+OCR_PROMPT_FILE_STEP1=prompts/multiphase_step1_ocr.md
+
+# Step 2: Metadaten
+OCR_PROMPT_FILE_STEP2=prompts/multiphase_step2_metadata.md
+
+# Step 3: Finalisierung
+OCR_PROMPT_FILE_STEP3=prompts/multiphase_step3_finalize.md
+
 TEST_PDF=exampledata/test.pdf
 ```
+
+## Multi-Phase Processing (3-Stufig)
+
+Das 3-stufige Verfahren sorgt für maximale Vollständigkeit bei minimaler Halluzination:
+
+| Stufe | Input | Output | Datei-Suffix | Ziel |
+|-------|-------|--------|--------------|------|
+| **1** | Einzelne Seiten (1 Call/Seite) | `[filename]_single_pages.md` | OCR verbatim, 100% vollständig |
+| **2** | Alle Seiten als Bild | `metadata.yaml` | Strukturierte Extrahiertung |
+| **3** | Beide Markdown-Files | `[filename].md` | Zusammenhängendes Dokument |
+
+### Reihenfolge: Step 1 → Step 2 → Step 3
+
+**WICHTIG:** Step 1 ist das MVP - das wichtigste Kriterium ist Vollständigkeit. Das Resultat von Step 1 ist im Zweifel produktionsreif.
+
+### Step 1: Plain OCR (Step 1)
+
+- **Input:** 1 Rastergrafik pro API-Call
+- **Output:** Markdown mit allen Inhalten (ggf. redundant)
+- **Ziel:** 100% Vollständigkeit, KEINE Umschreibung
+- **Regeln:**
+  - KEINE Interpretation
+  - KEINE Korrektur (außer offensichtliche OCR-Fehler)
+  - KEINE Zusammenfassung
+  - Alles was im Bild steht, muss im Markdown stehen
+
+### Step 2: Metadaten-Extraktion (Step 2)
+
+- **Input:** Alle Seiten als Rastergrafik (1 Call)
+- **Output:** YAML-Datei mit Metadaten
+- **Extrahiert:**
+  - Absender (Name, Adresse, Kontakt)
+  - Empfänger (Name, Adresse)
+  - Dokument-Typ (zeugnis, brief, rechnung, etc.)
+  - Sprache
+  - Kopfzeilen/Fußzeilen (identifizieren für Redundanz-Entfernung)
+  - Original-Dateiname (wird vom Python eingefügt)
+
+### Step 3: Finalisierung (Step 3)
+
+- **Input:** `[filename]_single_pages.md` + `metadata.yaml`
+- **Output:** `[filename].md` (zusammenhängend, redundant bereinigt)
+- **WICHTIG:** Keine Rastergrafiken - nur die已有 Markdown-Files
+- **Ziel:** Sauberes, strukturiertes Dokument ohne Redundanz
 
 ## CLI Parameters
 
 Alle ENV-Variablen können per CLI überschrieben werden. Parameter-Namen sind identisch mit ENV-Variablen (inkl. Capslock).
 
 ```bash
-python run.py --OLLAMA_MODEL gemma3:4b --OUTPUT_INCLUDE_METADATA 1
-```
-
-**Beispiel für Testreihe:**
-```bash
-for model in gemma3:4b qwen2.5:7b llama3.1:8b; do
-  python run.py --OLLAMA_MODEL $model --FILENAME_INCLUDE_MODEL_TAG 1
-done
+python run.py --OLLAMA_MODEL gemma3-4b --OUTPUT_INCLUDE_METADATA 1 --MULTIPHASE_MODE 1
 ```
 
 | CLI-Parameter | Überschreibt ENV |
@@ -88,6 +137,7 @@ done
 | --MAX_PAGES_PER_REQUEST | MAX_PAGES_PER_REQUEST |
 | --OCR_PROMPT | OCR_PROMPT |
 | --OCR_PROMPT_FILE | OCR_PROMPT_FILE |
+| --MULTIPHASE_MODE | MULTIPHASE_MODE |
 | --OUTPUT_DIR | OUTPUT_DIR |
 | --OUTPUT_INTO_SAME_DIR | OUTPUT_INTO_SAME_DIR |
 | --OVERWRITE_OUTPUT_FILES | OVERWRITE_OUTPUT_FILES |
@@ -132,33 +182,58 @@ pages: 3
 
 | Pages | Strategy |
 |-------|----------|
-| 1-4 | All pages in single request (default) |
+| 1-4 | All pages in single request (default, ohne MULTIPHASE_MODE) |
 | >4 | 2-phase approach (prepared, not implemented) |
+| MULTIPHASE_MODE=1 | 3-phase: Step1 → Step2 → Step3 (alle Seitenanzahlen) |
 
 ## Prompts
 
-Prompts can be defined inline in .env or in separate files. If `*_FILE` is set, the file content takes precedence.
-
 ```
 prompts/
-├── ocr_prompt.md                    # Current (unused)
-├── ocr_prompt_plain.md               # Basic version
-├── ocr_prompt_detailed.md            # Recommended: metadata + multi-page
-├── ocr_prompt_minimal.md             # Short version
-└── ocr_prompt_2phase_concept.md     # Future: 2-phase documentation
+├── ocr_prompt.md                    # Legacy (unused)
+├── ocr_prompt_plain.md              # Legacy (unused)
+├── ocr_prompt_detailed.md           # Legacy (single-pass)
+├── ocr_prompt_minimal.md            # Legacy (unused)
+├── ocr_prompt_2phase_concept.md     # Documentation
+├── multiphase_step1_ocr.md          # Step 1: Plain OCR
+├── multiphase_step1_ocr_template.md # Step 1 mit Platzhaltern
+├── multiphase_step2_metadata.md     # Step 2: Metadaten
+├── multiphase_step2_metadata_template.md  # Step 2 mit Platzhaltern
+└── multiphase_step3_finalize.md     # Step 3: Finalisierung
+├── multiphase_step3_finalize_template.md  # Step 3 mit Platzhaltern
 ```
 
-**Loading logic:**
-1. Load prompt from .env (e.g., `OCR_PROMPT`)
-2. If `OCR_PROMPT_FILE` is set and file exists → overwrite with file content
-3. If file doesn't exist → use .env value as fallback
+## Python Functions
 
-## Supported LLM Providers
+```python
+def step1_ocr_single_pages(image_paths, prompt) -> str:
+    """Step 1: Plain OCR, jede Seite einzeln
+    Args:
+        image_paths: Liste der Rastergrafik-Pfade (1 pro Seite)
+        prompt: Prompt aus multiphase_step1_ocr.md
+    Returns:
+        Markdown-String mit allen Seiteninhalten (ggf. redundant)
+    """
 
-| Provider | Enable Flag | Default URL | API Endpoint |
-|----------|-------------|-------------|--------------|
-| Ollama | USE_OLLAMA | localhost:11434 | /api/generate |
-| LM Studio | USE_LMSTUDIO | localhost:1234 | /v1/chat/completions |
+def step2_extract_metadata(image_paths, prompt) -> dict:
+    """Step 2: Metadaten extrahieren
+    Args:
+        image_paths: Alle Rastergrafiken (1 Call)
+        prompt: Prompt aus multiphase_step2_metadata.md
+    Returns:
+        Dict mit: sender, recipient, document_type, language, headers, footer, original_filename
+    """
+
+def step3_finalize(single_pages_md_path, metadata_yaml_path, prompt) -> str:
+    """Step 3: Zusammenführen
+    Args:
+        single_pages_md_path: Pfad zur _single_pages.md Datei
+        metadata_yaml_path: Pfad zur metadata.yaml
+        prompt: Prompt aus multiphase_step3_finalize.md
+    Returns:
+        Finaler Markdown-String
+    """
+```
 
 ## Structure
 
@@ -187,52 +262,29 @@ ALWAYS start with the MINIMUM viable implementation:
 | 5 | Save Markdown file | ✓ done |
 | 6 | Custom Prompts from .env or FILE | ✓ done |
 | 7 | Multi-page: All pages in single request | ✓ done |
-| 8 | **Output-Tagging für Tuning** | **current** |
-| 9 | Multi-page: 2-phase (metadata + content) | pending |
+| 8 | Output-Tagging für Tuning | ✓ done |
+| 9 | **Step 1: Plain OCR (single pages)** | **current** |
+| 10 | Step 2: Metadata extraction | pending |
+| 11 | Step 3: Finalization | pending |
 
-### Step 1: Connection
-- [x] Connects to URL based on USE_OLLAMA / USE_LMSTUDIO
-- [x] Supports both Ollama and LM Studio
-- [x] Check available models
+### Step 1: Plain OCR (Current - MVP)
+- [ ] Process each page individually (1 API call per page)
+- [ ] Load prompt from `OCR_PROMPT_FILE_STEP1`
+- [ ] Add page markers for reference
+- [ ] Save output as `[filename]_single_pages.md`
+- [ ] **STRICT:** NO rephrasing, NO interpretation, NO correction (except obvious OCR errors)
 
-### Step 2: Text Prompt
-- [x] Send simple text prompt
-- [x] Receive and return response
-- [x] Set keep_alive from OLLAMA_KEEP_ALIVE
+### Step 10: Metadata Extraction
+- [ ] Send all pages in single request
+- [ ] Load prompt from `OCR_PROMPT_FILE_STEP2`
+- [ ] Output structured YAML
+- [ ] Save as `metadata.yaml`
 
-### Step 3: PDF → PNG Images
-- [x] Convert PDF pages to PNG images
-- [x] Save to temp_images/ directory
-
-### Step 4: Images → Markdown
-- [x] Send image to LLM (Ollama OR LM Studio)
-- [x] Get Markdown response
-
-### Step 5: Save Markdown
-- [x] Combine page Markdowns
-- [x] Save .md file
-
-### Step 6: Custom Prompts
-- [x] Load prompts from .env or *_FILE
-- [x] Support prompts/ directory
-
-### Step 7: Multi-page Support (Current)
-- [ ] Send all pages at once for documents with pages <= MAX_PAGES_PER_REQUEST
-- [ ] Prompt includes page context (page X of Y)
-- [ ] Extract metadata from first page
-
-### Step 8: Output-Tagging für Tuning (Current)
-- [ ] Implement FILENAME_INCLUDE_MODEL_TAG=1 → [model_name] im Dateinamen
-- [ ] Implement OUTPUT_INCLUDE_METADATA=1 → Metadata-Kommentar am Dateianfang
-- [ ] Model-Name aus Config lesen (OLLAMA_MODEL oder LMSTUDIO_MODEL)
-- [ ] Provider-Debug-Info (prompt_tokens, completion_tokens, total_tokens) aus Response extrahieren
-- [ ] Prompt-File-Name aus OCR_PROMPT_FILE extrahieren
-- [ ] **CLI-Parameter**: Alle ENV-Variablen per CLI überschreibbar (gleiche Namen, inkl. Capslock)
-
-### Step 9: 2-Phase Approach (NOT IMPLEMENTED)
-- [ ] Phase 1: Extract metadata from all pages at once
-- [ ] Phase 2: Extract content page-by-page
-- [ ] Merge metadata + content
+### Step 11: Finalization
+- [ ] Read `_single_pages.md` and `metadata.yaml`
+- [ ] Load prompt from `OCR_PROMPT_FILE_STEP3`
+- [ ] Remove redundant headers/footers based on metadata
+- [ ] Output clean, cohesive markdown
 
 ## Critical Rules
 
@@ -241,14 +293,16 @@ ALWAYS start with the MINIMUM viable implementation:
 3. Keep each step as small as possible
 4. If stuck, ask user before implementing more
 5. Only implement ONE step at a time
+6. **Step 1 is the MVP** - even if imperfect, it must be complete and verbatim
 
 ## Phases
 
 | Phase | Status |
 |-------|--------|
-| PoC | ✓ active - connection + text prompt |
-| MVP | in progress - multi-page support |
-| 2-Phase | pending - prepared but not implemented |
+| PoC | ✓ complete |
+| MVP | in progress - Step 1 (single page OCR) |
+| Metadata | pending |
+| Finalization | pending |
 
 ## Gemma3-4b Parameters
 
