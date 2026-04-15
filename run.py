@@ -7,6 +7,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Boolean parsing helper (idiotensicher)
+def bool_from_env(env_name: str, default: bool = False) -> bool:
+    """Parse boolean from environment variable (idiotensicher)."""
+    TRUE_VALUES = ["1", "true"]
+    FALSE_VALUES = ["0", "false"]
+    
+    value = str(os.getenv(env_name, "")).lower().strip()
+    
+    if value in TRUE_VALUES:
+        return True
+    elif value in FALSE_VALUES:
+        return False
+    else:
+        return default
+
 # LLM Provider config
 USE_OLLAMA = os.getenv("USE_OLLAMA", "true").lower() == "true"
 USE_LMSTUDIO = os.getenv("USE_LMSTUDIO", "false").lower() == "true"
