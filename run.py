@@ -36,6 +36,12 @@ OCR_PROMPT_FILE = os.getenv("OCR_PROMPT_FILE", "")
 # Multi-page config
 MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
 
+# Multi-phase config
+MULTIPHASE_MODE = os.getenv("MULTIPHASE_MODE", "0") == "1"
+OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
+OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
+OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
+
 def load_prompt(env_key: str, file_key: str, default: str) -> str:
     """Load prompt from .env or from file."""
     prompt = os.getenv(env_key, "")
@@ -50,6 +56,11 @@ def load_prompt(env_key: str, file_key: str, default: str) -> str:
 
 # Prompt for OCR
 OCR_PROMPT_TEXT = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE", "Convert this image to markdown")
+
+# Multi-phase prompts
+OCR_PROMPT_STEP1 = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE_STEP1", "")
+OCR_PROMPT_STEP2 = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE_STEP2", "")
+OCR_PROMPT_STEP3 = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE_STEP3", "")
 
 # Test config
 TEST_PDF = os.getenv("TEST_PDF")
@@ -363,6 +374,91 @@ def pdf_to_images(pdf_path: Path) -> list[Path]:
     
     pdf.close()
     return images
+
+
+def step1_ocr_single_pages(images: list[Path], prompt: str, total_pages: int) -> str:
+    """Step 1: Plain OCR - jede Seite einzeln.
+    Returns: Markdown mit allen Seiteninhalten (ggf. redundant)
+    """
+    print(f"\n=== Step 1: Plain OCR (single pages) ===")
+    all_pages_md = []
+    
+    for i, img in enumerate(images, 1):
+        print(f"  Page {i}/{total_pages}...")
+        page_prompt = replace_prompt_vars(prompt, total_pages, i)
+        md = send_prompt_with_image(img, page_prompt)
+        
+        # Entferne Code-Fences
+        md = md.strip()
+        if md.startswith("```markdown"):
+            md = md[len("```markdown"):]
+        elif md.startswith("```"):
+            md = md[len("```"):]
+        if md.endswith("```"):
+            md = md[:-3]
+        md = md.strip()
+        
+        all_pages_md.append(f"## Page {i}\n\n{md}")
+        print(f"    Done: {len(md)} chars")
+    
+    result = "\n\n---\n\n".join(all_pages_md)
+    print(f"[OK] Step 1 complete: {len(result)} chars total")
+    return result
+
+
+def step2_extract_metadata(images: list[Path], prompt: str, total_pages: int) -> str:
+    """Step 2: Metadaten extrahieren.
+    Returns: YAML-String mit Metadaten
+    """
+    print(f"\n=== Step 2: Metadata Extraction ===")
+    
+    page_prompt = replace_prompt_vars(prompt, total_pages)
+    md = send_prompt_with_multiple_images(images, page_prompt)
+    
+    # Entferne Code-Fences
+    md = md.strip()
+    if md.startswith("```yaml"):
+        md = md[len("```yaml"):]
+    elif md.startswith("```"):
+        md = md[len("```"):]
+    if md.endswith("```"):
+        md = md[:-3]
+    md = md.strip()
+    
+    print(f"[OK] Step 2 complete: {len(md)} chars")
+    return md
+
+
+def step3_finalize(single_pages_md: str, metadata_yaml: str, prompt: str, total_pages: int) -> str:
+    """Step 3: Zusammenführen und bereinigen.
+    Returns: Sauberes, zusammenhängendes Markdown mit eingebetteten Metadaten
+    """
+    print(f"\n=== Step 3: Finalization ===")
+    
+    # Baue Prompt mit Inhalten
+    final_prompt = f"""{prompt}
+
+SINGLE_PAGES_MARKDOWN:
+{single_pages_md}
+
+METADATA_YAML:
+{metadata_yaml}
+"""
+    page_prompt = replace_prompt_vars(final_prompt, total_pages)
+    md = send_prompt(page_prompt)
+    
+    # Entferne Code-Fences
+    md = md.strip()
+    if md.startswith("```markdown"):
+        md = md[len("```markdown"):]
+    elif md.startswith("```"):
+        md = md[len("```"):]
+    if md.endswith("```"):
+        md = md[:-3]
+    md = md.strip()
+    
+    print(f"[OK] Step 3 complete: {len(md)} chars")
+    return md
 
 
 # Step 1: Connection
