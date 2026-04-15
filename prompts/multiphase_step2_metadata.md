@@ -7,6 +7,7 @@ OUTPUT FORMAT (YAML ONLY, NO MARKDOWN CODE BLOCKS):
 ```yaml
 sender:
   name: ""
+  company: ""
   address: ""
   email: ""
   phone: ""
@@ -15,15 +16,17 @@ sender:
 
 recipient:
   name: ""
+  company: ""
   address: ""
   email: ""
   phone: ""
 
 document_type: ""
-# Options: zeugnis (arbeitszeugnis), brief, rechnung, vertrag, protokoll, dokument, sonderfall
+# Options: zeugnis (arbeitszeugnis), brief, rechnung, vertrag, protokoll, dokument, other
 
-language: ""
+main_language: ""
 # Detected primary language (e.g., German, English)
+languages: []
 
 headers: []
 # List of repeated header text appearing on multiple pages
