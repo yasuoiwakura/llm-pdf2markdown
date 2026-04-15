@@ -465,22 +465,13 @@ models = get_models()
 if USE_LMSTUDIO:
     model_base = MODEL.split("/")[-1].split(":")[0]
     desired_found = any(model_base in m.get("id", "") for m in models)
-    if VERBOSE >= 3:
-        print("\nAvailable models:")
-        for m in models:
-            print(f"  - {m.get('id', '?')}")
+    if desired_found:
+        debug(1, f"Model '{MODEL}' is available")
     else:
-        if desired_found:
-            print(f"\n[OK] Model '{MODEL}' is available")
-        else:
-            print(f"\n[WARN] Model '{MODEL}' not found in available models")
+        print(f"\n[WARN] Model '{MODEL}' not found in available models")
+    debug(3, "Available models: " + ", ".join(m.get("id", "?") for m in models))
 else:
-    if VERBOSE >= 3:
-        print("\nAvailable models:")
-        for m in models:
-            name = m.get("name", "?")
-            size = m.get("size", 0) // (1024*1024*1024)
-            print(f"  - {name} ({size:.1f} GB)")
+    debug(3, "Available models: " + ", ".join(f"{m.get('name', '?')} ({m.get('size', 0)//(1024*1024*1024)}GB)" for m in models))
 
 # Load model with context_length (if enabled)
 if USE_LMSTUDIO and LMSTUDIO_CONTEXT_SIZE:
