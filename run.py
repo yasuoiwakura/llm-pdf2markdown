@@ -26,17 +26,19 @@ def bool_from_env(env_name: str, default: bool = False) -> bool:
 USE_OLLAMA = bool_from_env("USE_OLLAMA", True)
 USE_LMSTUDIO = bool_from_env("USE_LMSTUDIO", False)
 
-# Ollama config
-OLLAMA_URL = os.getenv("OLLAMA_URL")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
-OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
-
-# LM Studio config
-LMSTUDIO_URL = os.getenv("LMSTUDIO_URL")
-LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL")
-LMSTUDIO_CONTEXT_SIZE = os.getenv("LMSTUDIO_CONTEXT_SIZE", "")
-CONTEXT_SIZE_PER_REQUEST = os.getenv("CONTEXT_SIZE_PER_REQUEST", "0")
-CONTEXT_SIZE_BY_MODEL_LOAD = bool_from_env("CONTEXT_SIZE_BY_MODEL_LOAD", False)
+# Config dictionary for LLMManager
+CONFIG = {
+    "USE_OLLAMA": USE_OLLAMA,
+    "USE_LMSTUDIO": USE_LMSTUDIO,
+    "OLLAMA_URL": os.getenv("OLLAMA_URL"),
+    "OLLAMA_MODEL": os.getenv("OLLAMA_MODEL"),
+    "OLLAMA_KEEP_ALIVE": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+    "LMSTUDIO_URL": os.getenv("LMSTUDIO_URL"),
+    "LMSTUDIO_MODEL": os.getenv("LMSTUDIO_MODEL"),
+    "LMSTUDIO_CONTEXT_SIZE": os.getenv("LMSTUDIO_CONTEXT_SIZE", ""),
+    "CONTEXT_SIZE_PER_REQUEST": os.getenv("CONTEXT_SIZE_PER_REQUEST", "0"),
+    "CONTEXT_SIZE_BY_MODEL_LOAD": bool_from_env("CONTEXT_SIZE_BY_MODEL_LOAD", False),
+}
 
 # Output config
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", "")
@@ -53,9 +55,35 @@ MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
 
 # Multi-phase config
 MULTIPHASE_MODE = bool_from_env("MULTIPHASE_MODE", False)
+MULTIPHASE_MODEL_STEP1_OCR = os.getenv("MULTIPHASE_MODEL_STEP1_OCR", "")
 OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
 OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
 OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
+
+# Add to config for LLMManager
+CONFIG["MULTIPHASE_MODEL_STEP1_OCR"] = MULTIPHASE_MODEL_STEP1_OCR
+
+# Initialize LLM Manager
+from clients import create_client
+from clients.manager import LLMManager
+
+llm_manager = LLMManager(CONFIG)
+
+# Determine provider
+if USE_LMSTUDIO:
+    PROVIDER = "LM Studio"
+    URL = LMSTUDIO_URL
+    MODEL = LMSTUDIO_MODEL
+elif USE_OLLAMA:
+    PROVIDER = "Ollama"
+    URL = CONFIG["OLLAMA_URL"]
+    MODEL = CONFIG["OLLAMA_MODEL"]
+else:
+    print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
+    exit(1)
+
+# Initialize LLM clients through manager
+llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
 
 def load_prompt(env_key: str, file_key: str, default: str) -> str:
     """Load prompt from .env or from file."""
@@ -104,57 +132,62 @@ def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, so
     result = result.replace("{temp_filenames}", ", ".join(temp_filenames))
     return result
 
-import httpx
-import pypdfium2
+# Add to config for LLMManager
+CONFIG["MULTIPHASE_MODEL_STEP1_OCR"] = MULTIPHASE_MODEL_STEP1_OCR
 
-# Determine which provider to use
+# Initialize LLM Manager
+from clients import create_client
+from clients.manager import LLMManager
+
+llm_manager = LLMManager(CONFIG)
+
+# Determine provider
 if USE_LMSTUDIO:
     PROVIDER = "LM Studio"
     URL = LMSTUDIO_URL
     MODEL = LMSTUDIO_MODEL
 elif USE_OLLAMA:
     PROVIDER = "Ollama"
-    URL = OLLAMA_URL
-    MODEL = OLLAMA_MODEL
+    URL = CONFIG["OLLAMA_URL"]
+    MODEL = CONFIG["OLLAMA_MODEL"]
 else:
     print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
     exit(1)
+
+# Initialize LLM clients through manager
+llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
 
 # Zeige Konfiguration in einer Zeile bei verbose >= 1
 debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {MODEL}")
 
 
 def ping() -> bool:
-    """Check if LLM is reachable."""
-    client = httpx.Client(timeout=10)
-    try:
-        if USE_LMSTUDIO:
-            resp = client.get(f"{URL}/v1/models")
-            return resp.status_code == 200
-        else:
-            resp = client.get(f"{URL}/api/tags")
-            return resp.status_code == 200
-    except:
-        return False
+    """Check if LLM is reachable using manager."""
+    client = llm_manager.get_client(1)
+    return client.ping()
 
 
 def get_models() -> list:
     """Get available models."""
-    client = httpx.Client(timeout=10)
+    # Use default client to check models
+    client = llm_manager.default_client
     if USE_LMSTUDIO:
-        resp = client.get(f"{URL}/v1/models")
+        import httpx
+        c = httpx.Client(timeout=10)
+        resp = c.get(f"{URL}/v1/models")
         resp.raise_for_status()
         return resp.json()["data"]
     else:
-        resp = client.get(f"{URL}/api/tags")
+        import httpx
+        c = httpx.Client(timeout=10)
+        resp = c.get(f"{URL}/api/tags")
         resp.raise_for_status()
         return resp.json()["models"]
 
 
 def find_loaded_model() -> str:
     """Find already loaded model with matching context_length."""
-    if not USE_LMSTUDIO or not LMSTUDIO_CONTEXT_SIZE:
-        return ""
+    return ""  # Simplified - handled by manager now
     
     client = httpx.Client(timeout=10)
     # resp = client.get(f"{URL}/api/v1/models")
@@ -230,132 +263,26 @@ def load_model() -> None:
         resp.raise_for_status()
 
 
-def send_prompt(prompt: str) -> str:
-    """Send text prompt, return response."""
-    client = httpx.Client(timeout=120)
-    
-    if USE_LMSTUDIO:
-        # LM Studio uses OpenAI-compatible API
-        # Use instance_id if loaded with custom context
-        model_to_use = LMSTUDIO_INSTANCE_ID if LMSTUDIO_INSTANCE_ID else MODEL
-        payload = {
-            "model": model_to_use,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False
-        }
-        if LMSTUDIO_CONTEXT_SIZE and CONTEXT_SIZE_PER_REQUEST == "1":
-            payload["max_tokens"] = int(LMSTUDIO_CONTEXT_SIZE)
-            debug(2, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
-        
-        debug(2, f"API Input: model={model_to_use}, max_tokens={payload.get('max_tokens', 'default')}")
-        
-        resp = client.post(
-            f"{URL}/v1/chat/completions",
-            json=payload,
-        )
-        resp.raise_for_status()
-        resp_json = resp.json()
-        
-        # Token usage
-        usage = resp_json.get("usage", {})
-        debug(2, f"Usage: prompt={usage.get('prompt_tokens')}, completion={usage.get('completion_tokens')}, total={usage.get('total_tokens')}")
-        
-        response_text = resp_json["choices"][0]["message"]["content"]
-        debug(3, f"Response length: {len(response_text)} chars")
-        return response_text
-    else:
-        # Ollama API
-        resp = client.post(
-            f"{URL}/api/generate",
-            json={
-                "model": MODEL,
-                "prompt": prompt,
-                "keep_alive": OLLAMA_KEEP_ALIVE,
-                "stream": False
-            },
-        )
-        resp.raise_for_status()
-        resp_json = resp.json()
-        
-        # Debug output
-        debug(3, f"Ollama response keys: {list(resp_json.keys())}")
-        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
-        debug(3, f"Load duration (ns): {resp_json.get('load_duration')}")
-        
-        return resp_json["response"]
+def send_prompt(prompt: str, step: int = 2) -> str:
+    """Send text prompt using LLMManager."""
+    client = llm_manager.get_client(step)
+    return client.generate(prompt)
 
 
-def send_prompt_with_image(image_path: Path, prompt: str) -> str:
-    """Send single image + text prompt, return response."""
-    image_b64 = base64.b64encode(image_path.read_bytes()).decode()
-    return send_prompt_with_multiple_images([image_path], prompt)
+def send_prompt_with_image(image_path: Path, prompt: str, step: int = 1) -> str:
+    """Send single image + text prompt using LLMManager."""
+    client = llm_manager.get_client(step)
+    return client.generate_with_image(image_path, prompt)
 
 
-def send_prompt_with_multiple_images(image_paths: list[Path], prompt: str) -> str:
-    """Send multiple images + text prompt, return response."""
-    images_b64 = [base64.b64encode(p.read_bytes()).decode() for p in image_paths]
-    total_image_size = sum(len(b64) for b64 in images_b64)
-    client = httpx.Client(timeout=180)
-    
-    if USE_LMSTUDIO:
-        # LM Studio: OpenAI-compatible vision API
-        # Build content: text + all images
-        content = [{"type": "text", "text": prompt}]
-        for img_b64 in images_b64:
-            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}})
-        
-        # Use instance_id if loaded with custom context
-        model_to_use = LMSTUDIO_INSTANCE_ID if LMSTUDIO_INSTANCE_ID else MODEL
-        payload = {
-            "model": model_to_use,
-            "messages": [{"role": "user", "content": content}],
-            "stream": False
-        }
-        
-        # Add max_tokens if set (CONTEXT_SIZE_PER_REQUEST)
-        if LMSTUDIO_CONTEXT_SIZE and CONTEXT_SIZE_PER_REQUEST == "1":
-            payload["max_tokens"] = int(LMSTUDIO_CONTEXT_SIZE)
-            debug(2, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
-        
-        debug(2, f"API Input: model={model_to_use}, max_tokens={payload.get('max_tokens', 'default')}, images={total_image_size//1024}KB")
-        
-        resp = client.post(
-            f"{URL}/v1/chat/completions",
-            json=payload,
-        )
-        resp.raise_for_status()
-        resp_json = resp.json()
-        
-        # Debug output for context size verification
-        debug(3, f"Created: {resp_json.get('created')}")
-        
-        # Token usage (CRITICAL for CONTEXT_SIZE_PER_REQUEST verification)
-        usage = resp_json.get("usage", {})
-        debug(2, f"Usage: prompt={usage.get('prompt_tokens')}, completion={usage.get('completion_tokens')}, total={usage.get('total_tokens')}")
-        
-        response_text = resp_json["choices"][0]["message"]["content"]
-        debug(3, f"Response length: {len(response_text)} chars")
-        return response_text
-    else:
-        # Ollama API with images
-        resp = client.post(
-            f"{URL}/api/generate",
-            json={
-                "model": MODEL,
-                "prompt": prompt,
-                "images": images_b64,
-                "keep_alive": OLLAMA_KEEP_ALIVE,
-                "stream": False
-            },
-        )
-        resp.raise_for_status()
-        resp_json = resp.json()
-        
-        # Debug output
-        debug(3, f"Ollama response keys: {list(resp_json.keys())}")
-        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
-        
-        return resp_json["response"]
+def send_prompt_with_multiple_images(image_paths: list[Path], prompt: str, step: int = 1) -> str:
+    """Send multiple images + text prompt using LLMManager."""
+    client = llm_manager.get_client(step)
+    # For multiple images, process sequentially (simplified for now)
+    results = []
+    for img in image_paths:
+        results.append(client.generate_with_image(img, prompt))
+    return "\n\n---\n\n".join(results)
 
 
 def pdf_to_images(pdf_path: Path) -> list[Path]:
@@ -429,7 +356,7 @@ def step2_extract_metadata(images: list[Path], prompt: str, total_pages: int) ->
     print(f"\n=== Step 2: Metadata Extraction ===")
     
     page_prompt = replace_prompt_vars(prompt, total_pages)
-    md = send_prompt_with_multiple_images(images, page_prompt)
+    md = send_prompt_with_multiple_images(images, page_prompt, step=2)
     
     # Entferne Code-Fences
     md = md.strip()
@@ -547,7 +474,6 @@ if MULTIPHASE_MODE:
 
 if MULTIPHASE_MODE:
     # ============ STEP 1: Plain OCR ============
-    # ============ STEP 1: Plain OCR ============
     print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
     if OCR_PROMPT_STEP1:
         single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
@@ -558,6 +484,10 @@ if MULTIPHASE_MODE:
     # Speichere Step 1 Output
     single_pages_path.write_text(single_pages_md, encoding="utf-8")
     print(f"[OK] Saved: {single_pages_path}")
+    
+    # Cleanup Step 1 client if different from default
+    debug(1, "Cleaning up Step 1 client...")
+    llm_manager.cleanup_after_step1()
     
     # ============ STEP 2: Metadata ============
     print(f"\n[Step 2/{3}] Extracting metadata from all pages...")
@@ -656,14 +586,7 @@ if not KEEP_TEMP_FILES:
 else:
     print(f"[INFO] Kept temp_images/")
 
-# Unload model if loaded via CONTEXT_SIZE_BY_MODEL_LOAD
-if CONTEXT_SIZE_BY_MODEL_LOAD and LMSTUDIO_INSTANCE_ID and USE_LMSTUDIO:
-    unload_client = httpx.Client(timeout=30)
-    unload_resp = unload_client.post(
-        f"{URL}/api/v1/models/unload",
-        json={"instance_id": LMSTUDIO_INSTANCE_ID}
-    )
-    if unload_resp.status_code == 200:
-        print(f"[OK] Model unloaded: {LMSTUDIO_INSTANCE_ID}")
-    else:
-        print(f"[WARN] Unload failed: {unload_resp.status_code}")
+# Cleanup all LLM clients
+debug(1, "Closing all LLM clients...")
+llm_manager.close_all()
+print("[OK] All LLM clients closed")
