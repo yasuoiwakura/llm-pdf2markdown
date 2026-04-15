@@ -386,6 +386,7 @@ def pdf_to_images(pdf_path: Path) -> list[Path]:
 def step1_ocr_single_pages(images: list[Path], prompt: str, total_pages: int) -> str:
     """Step 1: Plain OCR - jede Seite einzeln.
     Returns: Markdown mit allen Seiteninhalten (ggf. redundant)
+    Mit Page Markern: # page n/total + <!-- start/end content page n of t -->
     """
     print(f"\n=== Step 1: Plain OCR (single pages) ===")
     all_pages_md = []
@@ -405,10 +406,18 @@ def step1_ocr_single_pages(images: list[Path], prompt: str, total_pages: int) ->
             md = md[:-3]
         md = md.strip()
         
-        all_pages_md.append(f"## Page {i}\n\n{md}")
+        # Füge Page Markers hinzu (SPEC-konform)
+        # Python fügt # page n/t + <!-- start/end content --> ein
+        page_section = f"""# page {i}/{total_pages}
+
+<!-- start content page {i} of {total_pages} -->
+{md}
+<!-- end content page {i} of {total_pages} -->"""
+        
+        all_pages_md.append(page_section)
         print(f"    Done: {len(md)} chars")
     
-    result = "\n\n---\n\n".join(all_pages_md)
+    result = "\n\n".join(all_pages_md)
     print(f"[OK] Step 1 complete: {len(result)} chars total")
     return result
 
