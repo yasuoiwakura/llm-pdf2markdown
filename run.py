@@ -485,13 +485,13 @@ else:
 if USE_LMSTUDIO and LMSTUDIO_CONTEXT_SIZE:
     load_model()
 
-# Step 2: Text prompt
-print("\nSending prompt...")
+# Step 0: Connection test
+print("\n[Preflight Check 1] Testing LLM connection...")
 response = send_prompt(f"Say 'Hello from {PROVIDER} and Python!' in exactly those words.")
-print(f"Response: {response}")
+debug(3, f"Test response: {response[:50]}...")
 
 # Step 3: PDF → Images
-print(f"\nConverting PDF to images: {TEST_PDF}")
+print(f"\n[Preparing data] Converting PDF to images: {TEST_PDF}")
 images = pdf_to_images(Path(TEST_PDF))
 print(f"[OK] {len(images)} page(s) saved to temp_images/")
 
@@ -519,6 +519,7 @@ temp_filenames = [img.name for img in images]
 # MULTIPHASE_MODE: 3-Phase Processing
 if MULTIPHASE_MODE:
     # ============ STEP 1: Plain OCR ============
+    print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
     if OCR_PROMPT_STEP1:
         single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
     else:
@@ -530,6 +531,7 @@ if MULTIPHASE_MODE:
     print(f"[OK] Saved: {single_pages_path}")
     
     # ============ STEP 2: Metadata ============
+    print(f"\n[Step 2/{3}] Extracting metadata from all pages...")
     if OCR_PROMPT_STEP2:
         metadata_yaml = step2_extract_metadata(images, OCR_PROMPT_STEP2, total_pages)
     else:
@@ -541,6 +543,7 @@ if MULTIPHASE_MODE:
     print(f"[OK] Saved: {metadata_path}")
     
     # ============ STEP 3: Finalize ============
+    print(f"\n[Step 3/{3}] Finalizing document with metadata...")
     if OCR_PROMPT_STEP3:
         final_md = step3_finalize(single_pages_md, metadata_yaml, OCR_PROMPT_STEP3, total_pages)
     else:
