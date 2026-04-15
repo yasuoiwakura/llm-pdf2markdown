@@ -230,7 +230,9 @@ def send_prompt(prompt: str) -> str:
         }
         if LMSTUDIO_CONTEXT_SIZE and CONTEXT_SIZE_PER_REQUEST == "1":
             payload["max_tokens"] = int(LMSTUDIO_CONTEXT_SIZE)
-            debug(3, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
+            debug(2, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
+        
+        debug(2, f"API Input: model={model_to_use}, max_tokens={payload.get('max_tokens', 'default')}")
         
         resp = client.post(
             f"{URL}/v1/chat/completions",
@@ -239,17 +241,9 @@ def send_prompt(prompt: str) -> str:
         resp.raise_for_status()
         resp_json = resp.json()
         
-        # Debug output for context size verification
-        debug(3, f"Response keys: {list(resp_json.keys())}")
-        debug(3, f"Model: {resp_json.get('model')}")
-        debug(3, f"Created: {resp_json.get('created')}")
-        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
-        debug(3, f"Prompt eval duration (ns): {resp_json.get('prompt_eval_duration')}")
-        debug(3, f"Eval duration (ns): {resp_json.get('eval_duration')}")
-        
         # Token usage
         usage = resp_json.get("usage", {})
-        debug(3, f"Usage: prompt_tokens={usage.get('prompt_tokens')}, completion_tokens={usage.get('completion_tokens')}, total_tokens={usage.get('total_tokens')}")
+        debug(2, f"Usage: prompt={usage.get('prompt_tokens')}, completion={usage.get('completion_tokens')}, total={usage.get('total_tokens')}")
         
         response_text = resp_json["choices"][0]["message"]["content"]
         debug(3, f"Response length: {len(response_text)} chars")
@@ -306,7 +300,9 @@ def send_prompt_with_multiple_images(image_paths: list[Path], prompt: str) -> st
         # Add max_tokens if set (CONTEXT_SIZE_PER_REQUEST)
         if LMSTUDIO_CONTEXT_SIZE and CONTEXT_SIZE_PER_REQUEST == "1":
             payload["max_tokens"] = int(LMSTUDIO_CONTEXT_SIZE)
-            debug(3, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
+            debug(2, f"CONTEXT_SIZE_PER_REQUEST: max_tokens={LMSTUDIO_CONTEXT_SIZE}")
+        
+        debug(2, f"API Input: model={model_to_use}, max_tokens={payload.get('max_tokens', 'default')}, images={total_image_size//1024}KB")
         
         resp = client.post(
             f"{URL}/v1/chat/completions",
@@ -316,17 +312,11 @@ def send_prompt_with_multiple_images(image_paths: list[Path], prompt: str) -> st
         resp_json = resp.json()
         
         # Debug output for context size verification
-        debug(3, f"Image data size: {total_image_size:,} bytes ({total_image_size//1024} KB)")
-        debug(3, f"Response keys: {list(resp_json.keys())}")
-        debug(3, f"Model: {resp_json.get('model')}")
         debug(3, f"Created: {resp_json.get('created')}")
-        debug(3, f"Total duration (ns): {resp_json.get('total_duration')}")
-        debug(3, f"Prompt eval duration (ns): {resp_json.get('prompt_eval_duration')}")
-        debug(3, f"Eval duration (ns): {resp_json.get('eval_duration')}")
         
         # Token usage (CRITICAL for CONTEXT_SIZE_PER_REQUEST verification)
         usage = resp_json.get("usage", {})
-        debug(3, f"Usage: prompt_tokens={usage.get('prompt_tokens')}, completion_tokens={usage.get('completion_tokens')}, total_tokens={usage.get('total_tokens')}")
+        debug(2, f"Usage: prompt={usage.get('prompt_tokens')}, completion={usage.get('completion_tokens')}, total={usage.get('total_tokens')}")
         
         response_text = resp_json["choices"][0]["message"]["content"]
         debug(3, f"Response length: {len(response_text)} chars")
@@ -363,6 +353,7 @@ def pdf_to_images(pdf_path: Path) -> list[Path]:
     tmpdir.mkdir()
     
     n_pages = len(pdf)
+    page_names = []
     for page_number in range(n_pages):
         page = pdf.get_page(page_number)
         bitmap = page.render(scale=SCALE)
@@ -370,9 +361,10 @@ def pdf_to_images(pdf_path: Path) -> list[Path]:
         path = tmpdir / f"page_{page_number+1:03d}.png"
         pil_image.save(path, "PNG")
         images.append(path)
-        print(f"  Saved: {path.name}")
+        page_names.append(path.name)
     
     pdf.close()
+    print(f"[OK] Saved {n_pages} pages: {', '.join(page_names)}")
     return images
 
 
@@ -468,18 +460,27 @@ else:
     print(f"[FAIL] Cannot connect to {PROVIDER}")
     exit(1)
 
-# Check available models
-print("\nAvailable models:")
+# Check available models (verbose >= 3 OR check for desired model)
 models = get_models()
 if USE_LMSTUDIO:
-    for m in models:
-        name = m.get("id", "?")
-        print(f"  - {name}")
+    model_base = MODEL.split("/")[-1].split(":")[0]
+    desired_found = any(model_base in m.get("id", "") for m in models)
+    if VERBOSE >= 3:
+        print("\nAvailable models:")
+        for m in models:
+            print(f"  - {m.get('id', '?')}")
+    else:
+        if desired_found:
+            print(f"\n[OK] Model '{MODEL}' is available")
+        else:
+            print(f"\n[WARN] Model '{MODEL}' not found in available models")
 else:
-    for m in models:
-        name = m.get("name", "?")
-        size = m.get("size", 0) // (1024*1024*1024)
-        print(f"  - {name} ({size:.1f} GB)")
+    if VERBOSE >= 3:
+        print("\nAvailable models:")
+        for m in models:
+            name = m.get("name", "?")
+            size = m.get("size", 0) // (1024*1024*1024)
+            print(f"  - {name} ({size:.1f} GB)")
 
 # Load model with context_length (if enabled)
 if USE_LMSTUDIO and LMSTUDIO_CONTEXT_SIZE:
@@ -493,7 +494,6 @@ debug(3, f"Test response: {response[:50]}...")
 # Step 3: PDF → Images
 print(f"\n[Preparing data] Converting PDF to images: {TEST_PDF}")
 images = pdf_to_images(Path(TEST_PDF))
-print(f"[OK] {len(images)} page(s) saved to temp_images/")
 
 # Bestimme Output-Pfad
 input_path = Path(TEST_PDF)
