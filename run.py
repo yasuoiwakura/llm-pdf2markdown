@@ -58,9 +58,9 @@ def load_prompt(env_key: str, file_key: str, default: str) -> str:
 OCR_PROMPT_TEXT = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE", "Convert this image to markdown")
 
 # Multi-phase prompts
-OCR_PROMPT_STEP1 = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE_STEP1", "")
-OCR_PROMPT_STEP2 = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE_STEP2", "")
-OCR_PROMPT_STEP3 = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE_STEP3", "")
+OCR_PROMPT_STEP1 = load_prompt("", "OCR_PROMPT_FILE_STEP1", "")
+OCR_PROMPT_STEP2 = load_prompt("", "OCR_PROMPT_FILE_STEP2", "")
+OCR_PROMPT_STEP3 = load_prompt("", "OCR_PROMPT_FILE_STEP3", "")
 
 # Test config
 TEST_PDF = os.getenv("TEST_PDF")
@@ -507,8 +507,22 @@ total_pages = len(images)
 source_file = input_path.name
 temp_filenames = [img.name for img in images]
 
+# Debug: check if prompts are loaded
+debug(2, f"MULTIPHASE_MODE={MULTIPHASE_MODE}, STEP1 loaded={bool(OCR_PROMPT_STEP1)}, STEP2 loaded={bool(OCR_PROMPT_STEP2)}, STEP3 loaded={bool(OCR_PROMPT_STEP3)}")
+
 # MULTIPHASE_MODE: 3-Phase Processing
 if MULTIPHASE_MODE:
+    # Check if prompts are loaded
+    if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
+        print("[ERROR] MULTIPHASE_MODE=1 requires all 3 step prompts to be configured:")
+        print(f"  - OCR_PROMPT_FILE_STEP1: {'SET' if OCR_PROMPT_FILE_STEP1 else 'MISSING'}")
+        print(f"  - OCR_PROMPT_FILE_STEP2: {'SET' if OCR_PROMPT_FILE_STEP2 else 'MISSING'}")
+        print(f"  - OCR_PROMPT_FILE_STEP3: {'SET' if OCR_PROMPT_FILE_STEP3 else 'MISSING'}")
+        print("Falling back to single-pass mode (MULTIPHASE_MODE=0)")
+        MULTIPHASE_MODE = False
+
+if MULTIPHASE_MODE:
+    # ============ STEP 1: Plain OCR ============
     # ============ STEP 1: Plain OCR ============
     print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
     if OCR_PROMPT_STEP1:
