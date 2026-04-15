@@ -495,68 +495,127 @@ print(f"\nConverting PDF to images: {TEST_PDF}")
 images = pdf_to_images(Path(TEST_PDF))
 print(f"[OK] {len(images)} page(s) saved to temp_images/")
 
-# Step 4: Image → Markdown (mit MAX_PAGES_PER_REQUEST)
-total_pages = len(images)
-source_file = Path(TEST_PDF).name
-temp_filenames = [img.name for img in images]
-print(f"\nConverting {total_pages} pages to Markdown...")
-
-# Prüfe Schwellwert
-if total_pages <= MAX_PAGES_PER_REQUEST:
-    # Single request mit allen Seiten
-    print(f"  Using single request (pages <= {MAX_PAGES_PER_REQUEST})")
-    prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, source_file=source_file, temp_filenames=temp_filenames)
-    md = send_prompt_with_multiple_images(images, prompt_with_vars)
-    all_markdowns = [md]
-else:
-    # Multiple requests (seite für Seite)
-    print(f"  Using multiple requests (pages > {MAX_PAGES_PER_REQUEST})")
-    all_markdowns = []
-    for i, img in enumerate(images, 1):
-        print(f"  Page {i}/{total_pages}...")
-        prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, i, source_file, temp_filenames)
-        md = send_prompt_with_image(img, prompt_with_vars)
-        all_markdowns.append(md)
-        print(f"    Done: {len(md)} chars")
-
-# Step 5: Save Markdown
-print("\nSaving Markdown...")
-
 # Bestimme Output-Pfad
 input_path = Path(TEST_PDF)
 if OUTPUT_INTO_SAME_DIR:
-    output_path = input_path.with_suffix(".md")
+    output_dir = input_path.parent
 else:
-    output_path = Path(OUTPUT_DIR) / input_path.with_suffix(".md").name
+    output_dir = Path(OUTPUT_DIR)
+    output_dir.mkdir(exist_ok=True)
 
-# Prüfe ob Datei bereits existiert
-if output_path.exists():
-    if OVERWRITE_OUTPUT_FILES:
-        print(f"[WARN] Overwriting: {output_path}")
+single_pages_path = output_dir / f"{input_path.stem}_single_pages.md"
+metadata_path = output_dir / "metadata.yaml"
+final_output_path = output_dir / f"{input_path.stem}.md"
+
+# Prüfe ob Dateien bereits existieren
+if single_pages_path.exists() and final_output_path.exists() and not OVERWRITE_OUTPUT_FILES:
+    print(f"[ERROR] Output files already exist: {single_pages_path}, {final_output_path}")
+    exit(1)
+
+total_pages = len(images)
+source_file = input_path.name
+temp_filenames = [img.name for img in images]
+
+# MULTIPHASE_MODE: 3-Phase Processing
+if MULTIPHASE_MODE:
+    # ============ STEP 1: Plain OCR ============
+    if OCR_PROMPT_STEP1:
+        single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
     else:
-        print(f"[ERROR] File already exists: {output_path}")
+        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP1 not set")
         exit(1)
+    
+    # Speichere Step 1 Output
+    single_pages_path.write_text(single_pages_md, encoding="utf-8")
+    print(f"[OK] Saved: {single_pages_path}")
+    
+    # ============ STEP 2: Metadata ============
+    if OCR_PROMPT_STEP2:
+        metadata_yaml = step2_extract_metadata(images, OCR_PROMPT_STEP2, total_pages)
+    else:
+        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP2 not set")
+        exit(1)
+    
+    # Speichere Step 2 Output
+    metadata_path.write_text(metadata_yaml, encoding="utf-8")
+    print(f"[OK] Saved: {metadata_path}")
+    
+    # ============ STEP 3: Finalize ============
+    if OCR_PROMPT_STEP3:
+        final_md = step3_finalize(single_pages_md, metadata_yaml, OCR_PROMPT_STEP3, total_pages)
+    else:
+        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP3 not set")
+        exit(1)
+    
+    # Entferne Code-Fences
+    final_md = final_md.strip()
+    if final_md.startswith("```markdown"):
+        final_md = final_md[len("```markdown"):]
+    elif final_md.startswith("```"):
+        final_md = final_md[len("```"):]
+    if final_md.endswith("```"):
+        final_md = final_md[:-3]
+    final_md = final_md.strip()
+    
+    final_output_path.write_text(final_md, encoding="utf-8")
+    print(f"[OK] Saved: {final_output_path}")
+    
+    output_path = final_output_path
 
-# Speichere Markdown
-if len(all_markdowns) == 1:
-    # Single request: kein Trenner nötig
-    output_md = all_markdowns[0]
 else:
-    # Multiple requests: mit Trenner
-    output_md = "\n\n---\n\n".join(all_markdowns)
+    # ============ Single-pass (original) ============
+    print(f"\nConverting {total_pages} pages to Markdown...")
 
-# Remove markdown code fences from LLM response
-output_md = output_md.strip()
-if output_md.startswith("```markdown"):
-    output_md = output_md[len("```markdown"):]
-elif output_md.startswith("```"):
-    output_md = output_md[len("```"):]
-if output_md.endswith("```"):
-    output_md = output_md[:-3]
-output_md = output_md.strip()
+    # Prüfe Schwellwert
+    if total_pages <= MAX_PAGES_PER_REQUEST:
+        # Single request mit allen Seiten
+        print(f"  Using single request (pages <= {MAX_PAGES_PER_REQUEST})")
+        prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, source_file=source_file, temp_filenames=temp_filenames)
+        md = send_prompt_with_multiple_images(images, prompt_with_vars)
+        all_markdowns = [md]
+    else:
+        # Multiple requests (seite für Seite)
+        print(f"  Using multiple requests (pages > {MAX_PAGES_PER_REQUEST})")
+        all_markdowns = []
+        for i, img in enumerate(images, 1):
+            print(f"  Page {i}/{total_pages}...")
+            prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, i, source_file, temp_filenames)
+            md = send_prompt_with_image(img, prompt_with_vars)
+            all_markdowns.append(md)
+            print(f"    Done: {len(md)} chars")
 
-output_path.write_text(output_md, encoding="utf-8")
-print(f"[OK] Saved: {output_path}")
+    # Speichere Markdown
+    if len(all_markdowns) == 1:
+        output_md = all_markdowns[0]
+    else:
+        output_md = "\n\n---\n\n".join(all_markdowns)
+
+    # Remove markdown code fences from LLM response
+    output_md = output_md.strip()
+    if output_md.startswith("```markdown"):
+        output_md = output_md[len("```markdown"):]
+    elif output_md.startswith("```"):
+        output_md = output_md[len("```"):]
+    if output_md.endswith("```"):
+        output_md = output_md[:-3]
+    output_md = output_md.strip()
+
+    # Bestimme Output-Pfad
+    if OUTPUT_INTO_SAME_DIR:
+        output_path = input_path.with_suffix(".md")
+    else:
+        output_path = Path(OUTPUT_DIR) / input_path.with_suffix(".md").name
+
+    # Prüfe ob Datei bereits existiert
+    if output_path.exists():
+        if OVERWRITE_OUTPUT_FILES:
+            print(f"[WARN] Overwriting: {output_path}")
+        else:
+            print(f"[ERROR] File already exists: {output_path}")
+            exit(1)
+
+    output_path.write_text(output_md, encoding="utf-8")
+    print(f"[OK] Saved: {output_path}")
 
 # Cleanup temp images
 if not KEEP_TEMP_FILES:
