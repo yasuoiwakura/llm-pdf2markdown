@@ -4,6 +4,10 @@ Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
 ## Status: MVP (Multi-phase OCR)
 
+## README.md
+
+User-Dokumentation: Siehe README.md
+
 ## Run
 
 ```bash
@@ -226,18 +230,18 @@ pages: 3
 
 ```
 prompts/
-├── ocr_prompt.md                    # Legacy (unused)
-├── ocr_prompt_plain.md              # Legacy (unused)
-├── ocr_prompt_detailed.md           # Legacy (single-pass)
-├── ocr_prompt_minimal.md            # Legacy (unused)
-├── ocr_prompt_2phase_concept.md     # Documentation
-├── multiphase_step1_ocr.md          # Step 1: Plain OCR
-├── multiphase_step1_ocr_template.md # Step 1 mit Platzhaltern
-├── multiphase_step2_metadata.md     # Step 2: Metadaten
-├── multiphase_step2_metadata_template.md  # Step 2 mit Platzhaltern
-└── multiphase_step3_finalize.md     # Step 3: Finalisierung
-├── multiphase_step3_finalize_template.md  # Step 3 mit Platzhaltern
+├── old/                         # Legacy (alter Ansatz - ggf. später revalidieren)
+│   ├── ocr_prompt.md            # Alter Ansatz: single-pass OCR
+│   ├── ocr_prompt_plain.md    # Einfache Version
+│   ├── ocr_prompt_detailed.md # Mit Metadaten
+│   └── ocr_prompt_minimal.md   # Minimale Version
+├── multiphase_step1_ocr.md      # Step 1: Plain OCR
+├── multiphase_step2_metadata.md  # Step 2: Metadaten
+└── multiphase_step3_finalize.md # Step 3: Finalisierung
 ```
+
+**Hinweis zu _template.md:**
+- (*_template.md Dateien wurden NICHT erstellt - Konzept für Output-Vorlagen, nicht MVP-geplant)
 
 ## Python Functions
 
