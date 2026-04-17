@@ -4,21 +4,22 @@ from typing import Dict, Any, Optional
 from clients import create_client, LLMClient
 
 
-def _debug(level: int, *args):
-    """Print debug message if VERBOSE >= level."""
-    from run import VERBOSE
-    if VERBOSE >= level:
+def _debug(level: int, verbose: int, *args):
+    """Print debug message if verbose >= level."""
+    if verbose >= level:
         print(f"[DEBUG:{level}]", *args)
 
 
 class LLMManager:
     """Verwaltet LLM-Instanzen für verschiedene Steps basierend auf model_config.toml."""
     
-    def __init__(self, config: dict, model_config_path: str = "model_config.toml"):
+    def __init__(self, config: dict, model_config_path: str = "model_config.toml", verbose: int = 0):
         self.config = config
         self.model_config_path = Path(model_config_path)
         self.model_config: Dict[str, Any] = {}
-        self.step_clients: Dict[int, LLMClient] = {}  # step -> client
+        self.step_clients: Dict[int, LLMClient] = {}
+        self.client_instances: Dict[str, LLMClient] = {}
+        self.verbose = verbose  # step -> client
         self.client_instances: Dict[str, LLMClient] = {}  # cfg_name -> client instance
     
     def load_model_config(self):
@@ -54,10 +55,10 @@ class LLMManager:
         context_size = cfg_section.get("context_size")
         
         if should_load and provider == "lmstudio" and context_size:
-            _debug(2, f"Explicitly loading model '{model}' with context_size={context_size}")
+            _debug(2, self.verbose, f"Explicitly loading model '{model}' with context_size={context_size}")
             client.load_model(int(context_size))
             client._was_explicitly_loaded = True
-            _debug(2, f"Model '{model}' loaded, instance_id={client._instance_id}")
+            _debug(2, self.verbose, f"Model '{model}' loaded, instance_id={client._instance_id}")
         
         return client
     
@@ -131,12 +132,12 @@ class LLMManager:
         
         # NUR entladen wenn Modell explizit geladen wurde
         if not getattr(client, '_was_explicitly_loaded', False):
-            _debug(2, f"Step 1 model '{client.model}' loaded implicitly, not unloading")
+            _debug(2, self.verbose, f"Step 1 model '{client.model}' loaded implicitly, not unloading")
             return
         
         # Wirklich entladen (nur wenn explizit geladen)
         if self.step_clients.get(1) != self.step_clients.get(2):
-            _debug(2, f"Explicitly unloading Step 1 model '{client.model}'")
+            _debug(2, self.verbose, f"Explicitly unloading Step 1 model '{client.model}'")
             client.close()
             # Remove from instances if it's a unique config
             for cfg_name, inst in list(self.client_instances.items()):
@@ -149,7 +150,7 @@ class LLMManager:
         """Schließt alle Clients die explizit geladen wurden."""
         for cfg_name, client in list(self.client_instances.items()):
             if client and getattr(client, '_was_explicitly_loaded', False):
-                _debug(2, f"Explicitly unloading model '{client.model}'")
+                _debug(2, self.verbose, f"Explicitly unloading model '{client.model}'")
                 client.close()
         
         # Clear all references

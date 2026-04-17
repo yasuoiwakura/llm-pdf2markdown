@@ -8,6 +8,9 @@ import pypdfium2
 
 load_dotenv()
 
+# Debug config (early, before any imports)
+VERBOSE = int(os.getenv("VERBOSE", "0"))
+
 # Boolean parsing helper (idiotensicher)
 def bool_from_env(env_name: str, default: bool = False) -> bool:
     """Parse boolean from environment variable (idiotensicher)."""
@@ -69,7 +72,7 @@ OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
 from clients import create_client
 from clients.manager import LLMManager
 
-llm_manager = LLMManager(CONFIG)
+llm_manager = LLMManager(CONFIG, verbose=VERBOSE)
 
 # Determine provider
 if USE_LMSTUDIO:
@@ -134,7 +137,7 @@ def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, so
 from clients import create_client
 from clients.manager import LLMManager
 
-llm_manager = LLMManager(CONFIG)
+llm_manager = LLMManager(CONFIG, verbose=VERBOSE)
 
 # Initialize LLM clients through manager
 llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
