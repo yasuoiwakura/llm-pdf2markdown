@@ -61,9 +61,7 @@ OCR_PROMPT_FILE = os.getenv("OCR_PROMPT_FILE", "")
 # Multi-page config
 MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
 
-# Multi-phase config
-MULTIPHASE_MODE = bool_from_env("MULTIPHASE_MODE", False)
-MULTIPHASE_MODEL_STEP1_OCR = os.getenv("MULTIPHASE_MODEL_STEP1_OCR", "")
+# Step prompts (required for multi-step processing)
 OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
 OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
 OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
@@ -408,126 +406,52 @@ total_pages = len(images)
 source_file = input_path.name
 temp_filenames = [img.name for img in images]
 
-# Debug: check if prompts are loaded
-debug(2, f"MULTIPHASE_MODE={MULTIPHASE_MODE}, STEP1 loaded={bool(OCR_PROMPT_STEP1)}, STEP2 loaded={bool(OCR_PROMPT_STEP2)}, STEP3 loaded={bool(OCR_PROMPT_STEP3)}")
+# Check if prompts are loaded
+if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
+    print("[ERROR] All 3 step prompts are required:")
+    print(f"  - OCR_PROMPT_FILE_STEP1: {'SET' if OCR_PROMPT_FILE_STEP1 else 'MISSING'}")
+    print(f"  - OCR_PROMPT_FILE_STEP2: {'SET' if OCR_PROMPT_FILE_STEP2 else 'MISSING'}")
+    print(f"  - OCR_PROMPT_FILE_STEP3: {'SET' if OCR_PROMPT_FILE_STEP3 else 'MISSING'}")
+    exit(1)
 
-# MULTIPHASE_MODE: 3-Phase Processing
-if MULTIPHASE_MODE:
-    # Check if prompts are loaded
-    if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
-        print("[ERROR] MULTIPHASE_MODE=1 requires all 3 step prompts to be configured:")
-        print(f"  - OCR_PROMPT_FILE_STEP1: {'SET' if OCR_PROMPT_FILE_STEP1 else 'MISSING'}")
-        print(f"  - OCR_PROMPT_FILE_STEP2: {'SET' if OCR_PROMPT_FILE_STEP2 else 'MISSING'}")
-        print(f"  - OCR_PROMPT_FILE_STEP3: {'SET' if OCR_PROMPT_FILE_STEP3 else 'MISSING'}")
-        print("Falling back to single-pass mode (MULTIPHASE_MODE=0)")
-        MULTIPHASE_MODE = False
+# ============ STEP 1: Plain OCR ============
+print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
+single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
 
-if MULTIPHASE_MODE:
-    # ============ STEP 1: Plain OCR ============
-    print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
-    if OCR_PROMPT_STEP1:
-        single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
-    else:
-        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP1 not set")
-        exit(1)
-    
-    # Speichere Step 1 Output
-    single_pages_path.write_text(single_pages_md, encoding="utf-8")
-    print(f"[OK] Saved: {single_pages_path}")
-    
-    # Cleanup Step 1 client if different from default
-    debug(1, "Cleaning up Step 1 client...")
-    llm_manager.cleanup_after_step1()
-    
-    # ============ STEP 2: Metadata ============
-    print(f"\n[Step 2/{3}] Extracting metadata from all pages...")
-    if OCR_PROMPT_STEP2:
-        metadata_yaml = step2_extract_metadata(images, OCR_PROMPT_STEP2, total_pages)
-    else:
-        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP2 not set")
-        exit(1)
-    
-    # Speichere Step 2 Output
-    metadata_path.write_text(metadata_yaml, encoding="utf-8")
-    print(f"[OK] Saved: {metadata_path}")
-    
-    # ============ STEP 3: Finalize ============
-    print(f"\n[Step 3/{3}] Finalizing document with metadata...")
-    if OCR_PROMPT_STEP3:
-        final_md = step3_finalize(single_pages_md, metadata_yaml, OCR_PROMPT_STEP3, total_pages)
-    else:
-        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP3 not set")
-        exit(1)
-    
-    # Entferne Code-Fences
-    final_md = final_md.strip()
-    if final_md.startswith("```markdown"):
-        final_md = final_md[len("```markdown"):]
-    elif final_md.startswith("```"):
-        final_md = final_md[len("```"):]
-    if final_md.endswith("```"):
-        final_md = final_md[:-3]
-    final_md = final_md.strip()
-    
-    final_output_path.write_text(final_md, encoding="utf-8")
-    print(f"[OK] Saved: {final_output_path}")
-    
-    output_path = final_output_path
+# Speichere Step 1 Output
+single_pages_path.write_text(single_pages_md, encoding="utf-8")
+print(f"[OK] Saved: {single_pages_path}")
 
-else:
-    # ============ Single-pass (original) ============
-    print(f"\nConverting {total_pages} pages to Markdown...")
+# Cleanup Step 1 client if different from default
+debug(1, "Cleaning up Step 1 client...")
+llm_manager.cleanup_after_step1()
 
-    # Prüfe Schwellwert
-    if total_pages <= MAX_PAGES_PER_REQUEST:
-        # Single request mit allen Seiten
-        print(f"  Using single request (pages <= {MAX_PAGES_PER_REQUEST})")
-        prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, source_file=source_file, temp_filenames=temp_filenames)
-        md = send_prompt_with_multiple_images(images, prompt_with_vars)
-        all_markdowns = [md]
-    else:
-        # Multiple requests (seite für Seite)
-        print(f"  Using multiple requests (pages > {MAX_PAGES_PER_REQUEST})")
-        all_markdowns = []
-        for i, img in enumerate(images, 1):
-            print(f"  Page {i}/{total_pages}...")
-            prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, i, source_file, temp_filenames)
-            md = send_prompt_with_image(img, prompt_with_vars)
-            all_markdowns.append(md)
-            print(f"    Done: {len(md)} chars")
+# ============ STEP 2: Metadata ============
+print(f"\n[Step 2/{3}] Extracting metadata from all pages...")
+metadata_yaml = step2_extract_metadata(images, OCR_PROMPT_STEP2, total_pages)
 
-    # Speichere Markdown
-    if len(all_markdowns) == 1:
-        output_md = all_markdowns[0]
-    else:
-        output_md = "\n\n---\n\n".join(all_markdowns)
+# Speichere Step 2 Output
+metadata_path.write_text(metadata_yaml, encoding="utf-8")
+print(f"[OK] Saved: {metadata_path}")
 
-    # Remove markdown code fences from LLM response
-    output_md = output_md.strip()
-    if output_md.startswith("```markdown"):
-        output_md = output_md[len("```markdown"):]
-    elif output_md.startswith("```"):
-        output_md = output_md[len("```"):]
-    if output_md.endswith("```"):
-        output_md = output_md[:-3]
-    output_md = output_md.strip()
+# ============ STEP 3: Finalize ============
+print(f"\n[Step 3/{3}] Finalizing document with metadata...")
+final_md = step3_finalize(single_pages_md, metadata_yaml, OCR_PROMPT_STEP3, total_pages)
 
-    # Bestimme Output-Pfad
-    if OUTPUT_INTO_SAME_DIR:
-        output_path = input_path.with_suffix(".md")
-    else:
-        output_path = Path(OUTPUT_DIR) / input_path.with_suffix(".md").name
+# Entferne Code-Fences
+final_md = final_md.strip()
+if final_md.startswith("```markdown"):
+    final_md = final_md[len("```markdown"):]
+elif final_md.startswith("```"):
+    final_md = final_md[len("```"):]
+if final_md.endswith("```"):
+    final_md = final_md[:-3]
+final_md = final_md.strip()
 
-    # Prüfe ob Datei bereits existiert
-    if output_path.exists():
-        if OVERWRITE_OUTPUT_FILES:
-            print(f"[WARN] Overwriting: {output_path}")
-        else:
-            print(f"[ERROR] File already exists: {output_path}")
-            exit(1)
+final_output_path.write_text(final_md, encoding="utf-8")
+print(f"[OK] Saved: {final_output_path}")
 
-    output_path.write_text(output_md, encoding="utf-8")
-    print(f"[OK] Saved: {output_path}")
+output_path = final_output_path
 
 # Cleanup temp images
 if not KEEP_TEMP_FILES:
