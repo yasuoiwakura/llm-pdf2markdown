@@ -45,6 +45,25 @@ SONST:
     → Alte Instanz entladen (falls nötig)
 ```
 
+### Preflight Check
+
+Nur verwendete Modelle prüfen (keine Duplikate):
+
+```
+1. Lese step*_cfg Zuordnungen
+2. Extrahiere EINMALIGE Config-Namen (unique)
+3. Prüfe nur diese Modelle via API
+4. Bei Fehler: Stopp + klare Fehlermeldung
+```
+
+**Beispiel:**
+```toml
+step1_cfg="step1"
+step2_cfg="step_2_and_3"
+step3_cfg="step_2_and_3"
+```
+→ Prüfe: `step1`, `step_2_and_3` (2 Modelle, nicht 3)
+
 ## Run
 
 ```bash

@@ -94,9 +94,11 @@ class LMStudioClient(LLMClient):
         if resp.status_code == 200:
             data = resp.json()
             self._instance_id = data.get("instance_id", "")
+            self._was_explicitly_loaded = True
         elif resp.status_code == 409:
             # Already loaded, get instance info
             self._instance_id = self.model  # Fall back to model name
+            self._was_explicitly_loaded = True
     
     def unload_model(self):
         """Unload model from memory."""
@@ -112,7 +114,10 @@ class LMStudioClient(LLMClient):
             pass
         finally:
             self._instance_id = ""
+            self._was_explicitly_loaded = False
     
     def close(self):
-        self.unload_model()
+        # NUR entladen wenn Modell explizit geladen wurde
+        if getattr(self, '_was_explicitly_loaded', False):
+            self.unload_model()
         self._client.close()

@@ -4,6 +4,13 @@ from typing import Dict, Any, Optional
 from clients import create_client, LLMClient
 
 
+def _debug(level: int, *args):
+    """Print debug message if VERBOSE >= level."""
+    from run import VERBOSE
+    if VERBOSE >= level:
+        print(f"[DEBUG:{level}]", *args)
+
+
 class LLMManager:
     """Verwaltet LLM-Instanzen für verschiedene Steps basierend auf model_config.toml."""
     
@@ -33,7 +40,7 @@ class LLMManager:
         cfg_name = self.model_config.get(key, "step1")
         return self.model_config.get(cfg_name, {})
     
-    def _create_client_for_config(self, cfg_section: Dict[str, Any], provider: str) -> LLMClient:
+    def _create_client_for_config(self, cfg_section: Dict[str, Any], provider: str, cfg_name: str = "") -> LLMClient:
         """Create a client based on config section."""
         model = cfg_section.get("model", "")
         if not model:
@@ -41,11 +48,16 @@ class LLMManager:
         
         client = create_client(provider, model, self.config)
         
-        # Load model with context_size if specified
+        # NUR explizit laden wenn CONTEXT_SIZE_BY_MODEL_LOAD=true
+        # Implizit: Server lädt bei Bedarf
+        should_load = cfg_section.get("CONTEXT_SIZE_BY_MODEL_LOAD", False)
         context_size = cfg_section.get("context_size")
-        if context_size and provider == "lmstudio":
+        
+        if should_load and provider == "lmstudio" and context_size:
+            _debug(2, f"Explicitly loading model '{model}' with context_size={context_size}")
             client.load_model(int(context_size))
-            print(f"[OK] Loaded model with context_size: {context_size}")
+            client._was_explicitly_loaded = True
+            _debug(2, f"Model '{model}' loaded, instance_id={client._instance_id}")
         
         return client
     
@@ -87,10 +99,12 @@ class LLMManager:
         
         client = create_client(provider, model, self.config)
         
+        # Legacy: CONTEXT_SIZE_BY_MODEL_LOAD aus ENV
         if provider == "lmstudio" and self.config.get("CONTEXT_SIZE_BY_MODEL_LOAD"):
             context_size = self.config.get("LMSTUDIO_CONTEXT_SIZE")
             if context_size:
                 client.load_model(int(context_size))
+                client._was_explicitly_loaded = True
         
         self.step_clients = {1: client, 2: client, 3: client}
         self.client_instances = {"default": client}
@@ -110,22 +124,34 @@ class LLMManager:
         return self.step_clients.get(1)
     
     def cleanup_after_step1(self):
-        """Entlädt Step 1 Client falls nicht von Step 2+3 wiederverwendet."""
+        """Entlädt Step 1 Client NUR wenn er explizit geladen wurde."""
+        client = self.step_clients.get(1)
+        if not client:
+            return
+        
+        # NUR entladen wenn Modell explizit geladen wurde
+        if not getattr(client, '_was_explicitly_loaded', False):
+            _debug(2, f"Step 1 model '{client.model}' loaded implicitly, not unloading")
+            return
+        
+        # Wirklich entladen (nur wenn explizit geladen)
         if self.step_clients.get(1) != self.step_clients.get(2):
-            client = self.step_clients.get(1)
-            if client:
-                client.close()
-                # Remove from instances if it's a unique config
-                for cfg_name, inst in list(self.client_instances.items()):
-                    if inst == client:
-                        del self.client_instances[cfg_name]
-                        break
-                self.step_clients[1] = None
+            _debug(2, f"Explicitly unloading Step 1 model '{client.model}'")
+            client.close()
+            # Remove from instances if it's a unique config
+            for cfg_name, inst in list(self.client_instances.items()):
+                if inst == client:
+                    del self.client_instances[cfg_name]
+                    break
+            self.step_clients[1] = None
     
     def close_all(self):
-        """Schließt alle Clients."""
-        for client in self.client_instances.values():
-            if client:
+        """Schließt alle Clients die explizit geladen wurden."""
+        for cfg_name, client in list(self.client_instances.items()):
+            if client and getattr(client, '_was_explicitly_loaded', False):
+                _debug(2, f"Explicitly unloading model '{client.model}'")
                 client.close()
+        
+        # Clear all references
         self.client_instances.clear()
         self.step_clients.clear()
