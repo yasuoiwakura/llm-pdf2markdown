@@ -159,8 +159,6 @@ def ping() -> bool:
 
 def get_models() -> list:
     """Get available models."""
-    # Use default client to check models
-    client = llm_manager.default_client
     if USE_LMSTUDIO:
         import httpx
         c = httpx.Client(timeout=10)
@@ -173,6 +171,49 @@ def get_models() -> list:
         resp = c.get(f"{URL}/api/tags")
         resp.raise_for_status()
         return resp.json()["models"]
+
+
+def check_model_availability():
+    """Prüfe ob alle in model_config.toml definierten Modelle beim Server verfügbar sind."""
+    print("\n[Model Check] Checking availability of configured models...")
+    
+    # Get available models from server
+    try:
+        available_models = get_models()
+    except Exception as e:
+        print(f"[WARN] Could not fetch model list: {e}")
+        return
+    
+    # Extract model IDs based on provider
+    if USE_LMSTUDIO:
+        available_ids = [m.get("id", "") for m in available_models]
+    else:
+        available_ids = [m.get("name", "") for m in available_models]
+    
+    # Get configured models from LLMManager
+    configured_models = set()
+    for step in [1, 2, 3]:
+        client = llm_manager.get_client(step)
+        if client and client.model:
+            configured_models.add(client.model)
+    
+    # Check each configured model
+    all_available = True
+    for model in configured_models:
+        # Check if model is available (partial match for quantized variants)
+        found = any(model in available_id or available_id in model for available_id in available_ids)
+        if found:
+            debug(1, f"[OK] Model '{model}' is available")
+        else:
+            print(f"[WARN] Model '{model}' not found in available models")
+            all_available = False
+    
+    if not configured_models:
+        print("[WARN] No models configured")
+    elif all_available:
+        print(f"[OK] All {len(configured_models)} configured models available")
+    
+    return all_available
 
 
 def find_loaded_model() -> str:
@@ -336,10 +377,8 @@ else:
     print(f"[FAIL] Cannot connect to {PROVIDER}")
     exit(1)
 
-# Step 0: Connection test
-print("\n[Preflight Check 1] Testing LLM connection...")
-response = send_prompt(f"Say 'Hello from {PROVIDER} and Python!' in exactly those words.")
-debug(3, f"Test response: {response[:50]}...")
+# Step 2: Check model availability (before any processing)
+check_model_availability()
 
 # Step 3: PDF → Images
 print(f"\n[Preparing data] Converting PDF to images: {TEST_PDF}")
