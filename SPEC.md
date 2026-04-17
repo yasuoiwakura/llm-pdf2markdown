@@ -22,10 +22,25 @@ step3_cfg="step_2_and_3"
 
 [step1]
 model="glm-ocr@f16"
+prompt="do OCR"                    # ODER
+prompt_file="prompts/step1.md"    # ODER
 
 [step_2_and_3]
 model="google/gemma-3-12b-16k"
 context_size=16384
+prompt="extract metadata"          # ODER
+prompt_file="prompts/step2.md"     # ODER
+```
+
+### Prompt Präzedenz
+
+```
+WENN prompt_file definiert:
+    → Lese Prompt aus Datei (höchste Priorität)
+SONST WENN prompt definiert:
+    → Nutze inline Prompt
+SONST:
+    → Fallback auf .env (OCR_PROMPT)
 ```
 
 ### Logik
