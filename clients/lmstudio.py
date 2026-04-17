@@ -1,9 +1,17 @@
 import httpx
 import base64
+import os
 from pathlib import Path
 from typing import Dict, Any
 
 from .base import LLMClient
+
+
+def _debug(level: int, *args):
+    """Print debug message if VERBOSE >= level."""
+    verbose = int(os.getenv("VERBOSE", "0"))
+    if verbose >= level:
+        print(f"[DEBUG:{level}]", *args)
 
 
 class LMStudioClient(LLMClient):
@@ -86,14 +94,22 @@ class LMStudioClient(LLMClient):
         if not ctx:
             return
         
+        # Debug: verbose >= 3 shows API call
+        _debug(3, f"→ POST {self.url}/api/v1/models/load")
+        _debug(3, f"→ JSON: {{'model': '{self.model}', 'context_length': {int(ctx)}}}")
+        
         resp = self._client.post(
             f"{self.url}/api/v1/models/load",
             json={"model": self.model, "context_length": int(ctx)}
         )
         
+        _debug(3, f"← Response: {resp.status_code}")
+        
         if resp.status_code == 200:
             data = resp.json()
             self._instance_id = data.get("instance_id", "")
+            loaded_ctx = data.get("load_config", {}).get("context_length")
+            debug(3, f"← loaded context_length: {loaded_ctx}")
             self._was_explicitly_loaded = True
         elif resp.status_code == 409:
             # Already loaded, get instance info
@@ -102,6 +118,24 @@ class LMStudioClient(LLMClient):
     
     def unload_model(self):
         """Unload model from memory."""
+        if not self._instance_id:
+            return
+        
+        # Debug: verbose >= 3 shows API call
+        debug(3, f"→ POST {self.url}/api/v1/models/unload")
+        debug(3, f"→ JSON: {{'instance_id': '{self._instance_id}'}}")
+        
+        try:
+            resp = self._client.post(
+                f"{self.url}/api/v1/models/unload",
+                json={"instance_id": self._instance_id}
+            )
+            debug(3, f"← Response: {resp.status_code}")
+        except Exception as e:
+            debug(3, f"← Error: {e}")
+        finally:
+            self._instance_id = ""
+            self._was_explicitly_loaded = False
         if not self._instance_id:
             return
         
