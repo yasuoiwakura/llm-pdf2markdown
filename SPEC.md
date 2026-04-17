@@ -85,6 +85,40 @@ step3_cfg="step_2_and_3"
 python run.py
 ```
 
+## Configuration Strategy
+
+### SIMPLE_ENV_MODE
+
+```env
+SIMPLE_ENV_MODE=0  # Default: 0 = TOML (komplex), 1 = einfache .env
+```
+
+### Fallback-Logik
+
+| SIMPLE_ENV_MODE | model_config.toml | Modus |
+|----------------|-------------------|-------|
+| 0 | Vorhanden | TOML (3-Step) |
+| 0 | Nicht vorhanden | Fehler |
+| 1 | - | Einfache .env (single-pass, zukünftig) |
+
+```
+WENN SIMPLE_ENV_MODE=0 UND model_config.toml existiert:
+    → Nutze TOML (3-Step)
+WENN SIMPLE_ENV_MODE=1:
+    → Nutze einfache .env Variablen (single-pass, zukünftig)
+```
+
+### Ersetzte Variablen (Deprecated - für SIMPLE_ENV_MODE=1 später)
+
+| Alte Variable | Status | Zukunft |
+|---------------|--------|---------|
+| `MULTIPHASE_MODE` | **ERSETZT** | → `SIMPLE_ENV_MODE` |
+| `LMSTUDIO_MODEL` (global) | Deprecated | → TOML `[step*]` sections |
+| `LMSTUDIO_CONTEXT_SIZE` | Deprecated | → TOML `context_size` |
+| `OCR_PROMPT_FILE_STEP*` | Deprecated | → TOML `prompt`/`prompt_file` |
+
+**Hinweis:** Diese Variablen werden für `SIMPLE_ENV_MODE=1` später wieder implementiert. Aktuell auf Eis gelegt.
+
 ## Config
 
 ```env
