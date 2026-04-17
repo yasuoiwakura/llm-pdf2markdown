@@ -1,0 +1,164 @@
+# SPEC.md vs README.md Struktur-Leitfaden
+
+Dieser Leitfaden definiert, welche Inhalte in welches Dokument gehören.
+
+## Grundprinzipien
+
+| Dokument | Zielgruppe | Fokus | Änderungshäufigkeit |
+|----------|------------|-------|---------------------|
+| SPEC.md | Developer / AI Agent | Wie implementieren | Bei jedem Feature |
+| README.md | End User | Wie nutzen | Selten |
+
+## Inhalts-Matrix
+
+### INFO-TYP A: REDUNDANT (in beiden, minimal)
+
+Diese Information ist in beiden Dokumenten erlaubt, sollte aber minimal gehalten werden.
+
+| Info | Umfang | Beispiel |
+|------|-------|----------|
+| Projekt-Title | 1 Zeile | `# llm-pdf2markdown` |
+| Projekt-Einzeiler | 1-2 Sätze | "Convert PDFs to Markdown using local LLM" |
+| Quick Start Befehl | 1 Befehl | `python run.py` |
+
+### INFO-TYP B: GETRENNT
+
+Informationen exklusiv für ein Dokument.
+
+#### Nur SPEC.md (Technisch)
+
+| Info | Warum |
+|------|-------|
+| Implementation Steps | Agent braucht Fortschritt |
+| Status-Marker (✓/pending) | Agent braucht wissen was fertig ist |
+| Code-Vorlagen (base.py, manager.py) | Agent braucht Blaupause |
+| CLI Parameters (vollständig) | Agent brauch Referenz |
+| Config-Details | Agent braucht Werte |
+| Known Issues | Agent Referenz |
+| Prompt-Dateistruktur | Agent Referenz |
+
+#### Nur README.md (User)
+
+| Info | Warum |
+|------|-------|
+| "Was ist das?" | User-Verständnis |
+| "Warum?" | Motivation |
+| "Für wen?" | Zielgruppe |
+| Voraussetzungen | User-Setup |
+| Verweis auf SPEC für Details | User-Info |
+
+### INFO-TYP C: VERWEIS (SPEC → README)
+
+Aus INFO-TYP B kann verwiesen werden statt kopiert.
+
+| SPEC-Eintrag | README-Verweis |
+|--------------|----------------|
+| Detaillierte Config-Erklärung | "Siehe SPEC.md#Config" |
+| Known Issues Liste | "Siehe SPEC.md#Known-Issues" |
+| CLI Vollständig | "Vollständige Parameter → SPEC.md" |
+
+## Richtlinien
+
+### Was INS SPEC gehört
+
+```
+# Projektname
+
+## Status
+[Aktuelle Phase]
+
+## Run
+[Basis-Befehl]
+
+## README.md Verweis
+[1 Zeile: User-Doku → README.md]
+
+## Config
+[ENV-Variablen mit Erklärungen]
+
+## CLI Parameters
+[Vollständige Liste]
+
+## Implementation Steps
+[Nummerierte Steps mit Status]
+
+## Known Issues
+[Bekannte Probleme]
+
+## Structure
+[Dateistruktur]
+
+## [Technische Sektionen]
+[LLM Client, Prompts, etc.]
+```
+
+### Was INS README gehört
+
+```
+# Projektname
+
+## Was ist das?
+[1 Absatz]
+
+## Warum?
+[Benefits]
+
+## Für wen?
+[Zielgruppe]
+
+## Schnellstart
+[Befehle]
+
+## Voraussetzungen
+[Software]
+
+## Anpassung
+[Verweis auf SPEC]
+
+## Mehr Details
+[Verweise]
+```
+
+### Was REDUNDANT sein DARF
+
+Nur diese minimalen Elemente:
+
+| Info | SPEC | README |
+|------|------|--------|
+| Title | ✓ | ✓ |
+| Einzeiler | ✓ | ✓ |
+| Quick Start | ✓ | ✓ |
+
+## Praxis-Beispiel: Aktuelles Projekt
+
+### SPEC.md (~615 Zeilen → ~560 Zeilen)
+
+**Behalten:**
+- Status
+- Run (Befehl)
+- README.md Verweis (KURZ)
+- Config
+- CLI Parameters
+- Implementation Steps
+- Known Issues
+- LLM Client Abstraktion
+- Prompts
+
+**Entfernen:**
+- Komplette README-Vorlage (~55 Zeilen)
+- README vs SPEC Vergleichstabelle
+
+### README.md (bleibt wie ~46 Zeilen)
+
+- Alle aktuellen User-Informationen
+- Verweis auf SPEC für Details
+
+## Zusammenfassung
+
+| Regel | Beschreibung |
+|-------|--------------|
+| 1 | SPEC = technisch, README = User |
+| 2 | Keine vollständigen Vorlagen im SPEC |
+| 3 | Redundanz nur minimal (Title, Einzeiler, 1 Befehl) |
+| 4 | Spezifische Info → Spezifisches Dokument |
+| 5 | Verweis > Kopie |
