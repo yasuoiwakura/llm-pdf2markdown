@@ -65,9 +65,6 @@ OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
 OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
 OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
 
-# Add to config for LLMManager
-CONFIG["MULTIPHASE_MODEL_STEP1_OCR"] = MULTIPHASE_MODEL_STEP1_OCR
-
 # Initialize LLM Manager
 from clients import create_client
 from clients.manager import LLMManager
@@ -78,7 +75,7 @@ llm_manager = LLMManager(CONFIG)
 if USE_LMSTUDIO:
     PROVIDER = "LM Studio"
     URL = CONFIG["LMSTUDIO_URL"]
-    MODEL = CONFIG["LMSTUDIO_MODEL"]
+    MODEL = CONFIG.get("LMSTUDIO_MODEL", "")
 elif USE_OLLAMA:
     PROVIDER = "Ollama"
     URL = CONFIG["OLLAMA_URL"]
@@ -87,8 +84,6 @@ else:
     print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
     exit(1)
 
-# Initialize LLM clients through manager
-llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
 
 def load_prompt(env_key: str, file_key: str, default: str) -> str:
     """Load prompt from .env or from file."""
@@ -122,8 +117,6 @@ def debug(level: int, *args):
     if VERBOSE >= level:
         print(f"[DEBUG:{level}]", *args)
 
-# Global for loaded model instance
-LMSTUDIO_INSTANCE_ID = ""
 
 def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, source_file: str = "", temp_filenames: list[str] = None) -> str:
     """Replace placeholders in prompt."""
@@ -137,33 +130,25 @@ def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, so
     result = result.replace("{temp_filenames}", ", ".join(temp_filenames))
     return result
 
-# Add to config for LLMManager
-CONFIG["MULTIPHASE_MODEL_STEP1_OCR"] = MULTIPHASE_MODEL_STEP1_OCR
-
 # Initialize LLM Manager
 from clients import create_client
 from clients.manager import LLMManager
 
 llm_manager = LLMManager(CONFIG)
 
-# Determine provider
-if USE_LMSTUDIO:
-    PROVIDER = "LM Studio"
-    URL = CONFIG["LMSTUDIO_URL"]
-    MODEL = CONFIG["LMSTUDIO_MODEL"]
-elif USE_OLLAMA:
-    PROVIDER = "Ollama"
-    URL = CONFIG["OLLAMA_URL"]
-    MODEL = CONFIG["OLLAMA_MODEL"]
-else:
-    print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
-    exit(1)
-
 # Initialize LLM clients through manager
 llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
 
+# Get model from first active step for debug display
+current_model = None
+for step in [1, 2, 3]:
+    client = llm_manager.get_client(step)
+    if client:
+        current_model = client.model
+        break
+
 # Zeige Konfiguration in einer Zeile bei verbose >= 1
-debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {MODEL}")
+debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {current_model}")
 
 
 def ping() -> bool:
@@ -191,81 +176,13 @@ def get_models() -> list:
 
 
 def find_loaded_model() -> str:
-    """Find already loaded model with matching context_length."""
-    return ""  # Simplified - handled by manager now
-    
-    client = httpx.Client(timeout=10)
-    # resp = client.get(f"{URL}/api/v1/models")
-    resp = client.get(f"{URL}/api/v1/models")
-    if resp.status_code != 200:
-        return ""
-    
-    models = resp.json().get("data", [])
-    target_ctx = int(LMSTUDIO_CONTEXT_SIZE)
-    model_base = MODEL.split("/")[-1].split(":")[0]
-    
-    for m in models:
-        cfg = m.get("load_config", {})
-        loaded_ctx = cfg.get("context_length", 0)
-        model_id = m.get("id", "")
-        
-        # Prüfe: gleiche context_length UND gleiches Modell
-        if loaded_ctx == target_ctx and model_base in model_id:
-            return model_id
-    
+    """Legacy - now handled by LLMManager."""
     return ""
 
 
 def load_model() -> None:
     """Load model with context_length before chat."""
-    global LMSTUDIO_INSTANCE_ID
-    global CONTEXT_SIZE_BY_MO2DEL_LOAD
-
-    if not USE_LMSTUDIO or not LMSTUDIO_CONTEXT_SIZE:
-        return
-    if not CONTEXT_SIZE_BY_MODEL_LOAD:
-        return
-    
-    # ZUERST: Prüfen ob Modell bereits mit passender context_length geladen
-    existing_id = find_loaded_model()
-    if existing_id:
-        LMSTUDIO_INSTANCE_ID = existing_id
-        print(f"[OK] Using existing model with context_length: {LMSTUDIO_CONTEXT_SIZE}")
-        return
-    
-    # Nicht gefunden: neu laden
-    client = httpx.Client(timeout=120)
-    target_ctx = int(LMSTUDIO_CONTEXT_SIZE)
-    resp = client.post(
-        f"{URL}/api/v1/models/load",
-        json={
-            "model": MODEL,
-            "context_length": target_ctx
-        }
-    )
-    if resp.status_code == 200:
-        data = resp.json()
-        loaded_ctx = data.get("load_config", {}).get("context_length", "?")
-        LMSTUDIO_INSTANCE_ID = data.get("instance_id", "")
-        print(f"[OK] Model loaded with context_length: {loaded_ctx}, instance_id: {LMSTUDIO_INSTANCE_ID}")
-    elif resp.status_code == 409:
-        # Unloading and then loading again
-        client2 = httpx.Client(timeout=60)
-        unload_resp = client2.post(
-            f"{URL}/api/v1/models/unload",
-            json={"model": MODEL}
-        )
-        # Try loading again
-        resp = client.post(
-            f"{URL}/api/v1/models/load",
-            json={"model": MODEL, "context_length": target_ctx}
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            LMSTUDIO_INSTANCE_ID = data.get("instance_id", "")
-            print(f"[OK] Model loaded with context_length: {target_ctx}")
-    else:
-        resp.raise_for_status()
+    pass  # Legacy - now handled by LLMManager from model_config.toml
 
 
 def send_prompt(prompt: str, step: int = 2) -> str:
@@ -418,23 +335,6 @@ if ping():
 else:
     print(f"[FAIL] Cannot connect to {PROVIDER}")
     exit(1)
-
-# Check available models (verbose >= 3 OR check for desired model)
-models = get_models()
-if USE_LMSTUDIO:
-    model_base = MODEL.split("/")[-1].split(":")[0]
-    desired_found = any(model_base in m.get("id", "") for m in models)
-    if desired_found:
-        debug(1, f"Model '{MODEL}' is available")
-    else:
-        print(f"\n[WARN] Model '{MODEL}' not found in available models")
-    debug(3, "Available models: " + ", ".join(m.get("id", "?") for m in models))
-else:
-    debug(3, "Available models: " + ", ".join(f"{m.get('name', '?')} ({m.get('size', 0)//(1024*1024*1024)}GB)" for m in models))
-
-# Load model with context_length (if enabled)
-if USE_LMSTUDIO and LMSTUDIO_CONTEXT_SIZE:
-    load_model()
 
 # Step 0: Connection test
 print("\n[Preflight Check 1] Testing LLM connection...")

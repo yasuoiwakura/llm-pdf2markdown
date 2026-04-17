@@ -6,7 +6,9 @@ step3_cfg="step_2_and_3"
 
 [step1]
 model = "glm-ocr@f16"
+CONTEXT_SIZE_PER_REQUEST=1
 
 [step_2_and_3]
-model = "google/gemma-3-12b-16k"
+model = "google/gemma-3-12b"
 context_size = 16384
+CONTEXT_SIZE_BY_MODEL_LOAD=1
