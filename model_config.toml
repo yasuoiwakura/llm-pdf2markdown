@@ -1,0 +1,12 @@
+# Model Configuration
+# Zuordnung: welche Config für welchen Step
+step1_cfg="step1"
+step2_cfg="step_2_and_3"
+step3_cfg="step_2_and_3"
+
+[step1]
+model = "glm-ocr@f16"
+
+[step_2_and_3]
+model = "google/gemma-3-12b-16k"
+context_size = 16384

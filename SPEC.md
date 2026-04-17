@@ -8,6 +8,43 @@ Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
 User-Dokumentation: Siehe README.md
 
+## Model Configuration (model_config.toml)
+
+Separate TOML-Datei für Modellzuordnung pro Step.
+
+### Struktur
+
+```toml
+# Zuordnung: welche Config für welchen Step
+step1_cfg="step1"
+step2_cfg="step_2_and_3"
+step3_cfg="step_2_and_3"
+
+[step1]
+model="glm-ocr@f16"
+
+[step_2_and_3]
+model="google/gemma-3-12b-16k"
+context_size=16384
+```
+
+### Logik
+
+- `step1_cfg`, `step2_cfg`, `step3_cfg` referenzieren Section-Namen
+- `[step1]` → Step 1 Modell (eigenständig)
+- `[step_2_and_3]` → Step 2+3 Modell (shared)
+
+### Instance Management
+
+```
+WENN next_step_config == current_step_config:
+    → Wiederverwendung des gleichen Client-Objekts
+    → NICHT neu laden
+SONST:
+    → Neue Client-Instanz erstellen
+    → Alte Instanz entladen (falls nötig)
+```
+
 ## Run
 
 ```bash
