@@ -1,30 +1,25 @@
 import httpx
 import base64
-import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from .base import LLMClient
-
-
-def _debug(level: int, *args):
-    """Print debug message if VERBOSE >= level."""
-    verbose = int(os.getenv("VERBOSE", "0"))
-    if verbose >= level:
-        print(f"[DEBUG:{level}]", *args)
+from .debug import debug
 
 
 class LMStudioClient(LLMClient):
     """LM Studio LLM client implementation."""
     
     def __init__(self, url: str, model: str, context_size: int = None, 
-                 context_size_per_request: bool = False, context_size_by_load: bool = False):
+                 context_size_per_request: bool = False, context_size_by_load: bool = False,
+                 verbose: int = 0):
         self.url = url
         self.model = model
-        self.provider = "lmstudio"
         self.context_size = context_size
         self.context_size_per_request = context_size_per_request
         self.context_size_by_load = context_size_by_load
+        self.verbose = verbose
+        self.provider = "lmstudio"
         self._client = httpx.Client(timeout=180)
         self._last_usage = {}
         self._instance_id = ""
@@ -95,21 +90,21 @@ class LMStudioClient(LLMClient):
             return
         
         # Debug: verbose >= 3 shows API call
-        _debug(3, f"→ POST {self.url}/api/v1/models/load")
-        _debug(3, f"→ JSON: {{'model': '{self.model}', 'context_length': {int(ctx)}}}")
+        debug(self.verbose, 3, f"--> POST {self.url}/api/v1/models/load")
+        debug(self.verbose, 3, f"--> JSON: model={self.model}, context_length={int(ctx)}")
         
         resp = self._client.post(
             f"{self.url}/api/v1/models/load",
             json={"model": self.model, "context_length": int(ctx)}
         )
         
-        _debug(3, f"← Response: {resp.status_code}")
+        debug(self.verbose, 3, f"<-- Response: {resp.status_code}")
         
         if resp.status_code == 200:
             data = resp.json()
             self._instance_id = data.get("instance_id", "")
             loaded_ctx = data.get("load_config", {}).get("context_length")
-            debug(3, f"← loaded context_length: {loaded_ctx}")
+            debug(self.verbose, 3, f"<-- loaded context_length: {loaded_ctx}")
             self._was_explicitly_loaded = True
         elif resp.status_code == 409:
             # Already loaded, get instance info
@@ -122,8 +117,8 @@ class LMStudioClient(LLMClient):
             return
         
         # Debug: verbose >= 3 shows API call
-        debug(3, f"→ POST {self.url}/api/v1/models/unload")
-        debug(3, f"→ JSON: {{'instance_id': '{self._instance_id}'}}")
+        debug(self.verbose, 3, f"--> POST {self.url}/api/v1/models/unload")
+        debug(self.verbose, 3, f"--> JSON: instance_id={self._instance_id}")
         
         try:
             resp = self._client.post(

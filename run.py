@@ -2,14 +2,21 @@ import os
 import shutil
 import json
 import base64
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 import pypdfium2
 
 load_dotenv()
 
-# Debug config (early, before any imports)
-VERBOSE = int(os.getenv("VERBOSE", "0"))
+# Parse command line arguments
+parser = argparse.ArgumentParser(description="Convert PDFs to Markdown using local LLM")
+parser.add_argument("--verbose", "-v", type=int, default=None, help="Verbosity level (0-3)")
+parser.add_argument("--test-pdf", type=str, default=None, help="Override TEST_PDF")
+args = parser.parse_args()
+
+# Debug config (early, with CLI override)
+VERBOSE = args.verbose if args.verbose is not None else int(os.getenv("VERBOSE", "0"))
 
 # Boolean parsing helper (idiotensicher)
 def bool_from_env(env_name: str, default: bool = False) -> bool:

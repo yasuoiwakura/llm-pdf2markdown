@@ -2,12 +2,7 @@ import tomli
 from pathlib import Path
 from typing import Dict, Any, Optional
 from clients import create_client, LLMClient
-
-
-def _debug(level: int, verbose: int, *args):
-    """Print debug message if verbose >= level."""
-    if verbose >= level:
-        print(f"[DEBUG:{level}]", *args)
+from clients.debug import debug
 
 
 class LLMManager:
@@ -47,18 +42,20 @@ class LLMManager:
         if not model:
             raise ValueError(f"No model specified in config: {cfg_section}")
         
-        client = create_client(provider, model, self.config)
+        client = create_client(provider, model, self.config, verbose=self.verbose)
+        
+        # Set context_size_by_load from TOML config
+        client.context_size_by_load = cfg_section.get("CONTEXT_SIZE_BY_MODEL_LOAD", False)
         
         # NUR explizit laden wenn CONTEXT_SIZE_BY_MODEL_LOAD=true
         # Implizit: Server lädt bei Bedarf
-        should_load = cfg_section.get("CONTEXT_SIZE_BY_MODEL_LOAD", False)
         context_size = cfg_section.get("context_size")
         
-        if should_load and provider == "lmstudio" and context_size:
-            _debug(2, self.verbose, f"Explicitly loading model '{model}' with context_size={context_size}")
+        if client.context_size_by_load and provider == "lmstudio" and context_size:
+            debug(self.verbose, 2, f"Explicitly loading model '{model}' with context_size={context_size}")
             client.load_model(int(context_size))
             client._was_explicitly_loaded = True
-            _debug(2, self.verbose, f"Model '{model}' loaded, instance_id={client._instance_id}")
+            debug(self.verbose, 2, f"Model '{model}' loaded, instance_id={client._instance_id}")
         
         return client
     
@@ -98,7 +95,7 @@ class LLMManager:
         else:
             model = self.config.get("LMSTUDIO_MODEL")
         
-        client = create_client(provider, model, self.config)
+        client = create_client(provider, model, self.config, verbose=self.verbose)
         
         # Legacy: CONTEXT_SIZE_BY_MODEL_LOAD aus ENV
         if provider == "lmstudio" and self.config.get("CONTEXT_SIZE_BY_MODEL_LOAD"):
@@ -132,12 +129,12 @@ class LLMManager:
         
         # NUR entladen wenn Modell explizit geladen wurde
         if not getattr(client, '_was_explicitly_loaded', False):
-            _debug(2, self.verbose, f"Step 1 model '{client.model}' loaded implicitly, not unloading")
+            debug(self.verbose, 2, f"Step 1 model '{client.model}' loaded implicitly, not unloading")
             return
         
         # Wirklich entladen (nur wenn explizit geladen)
         if self.step_clients.get(1) != self.step_clients.get(2):
-            _debug(2, self.verbose, f"Explicitly unloading Step 1 model '{client.model}'")
+            debug(self.verbose, 2, f"Explicitly unloading Step 1 model '{client.model}'")
             client.close()
             # Remove from instances if it's a unique config
             for cfg_name, inst in list(self.client_instances.items()):
@@ -150,7 +147,7 @@ class LLMManager:
         """Schließt alle Clients die explizit geladen wurden."""
         for cfg_name, client in list(self.client_instances.items()):
             if client and getattr(client, '_was_explicitly_loaded', False):
-                _debug(2, self.verbose, f"Explicitly unloading model '{client.model}'")
+                debug(self.verbose, 2, f"Explicitly unloading model '{client.model}'")
                 client.close()
         
         # Clear all references

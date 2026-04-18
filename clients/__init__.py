@@ -3,7 +3,7 @@ from .ollama import OllamaClient
 from .lmstudio import LMStudioClient
 
 
-def create_client(provider: str, model: str, config: dict) -> LLMClient:
+def create_client(provider: str, model: str, config: dict, verbose: int = 0) -> LLMClient:
     """Factory: Erstellt passenden Client basierend auf provider."""
     if provider == "ollama":
         return OllamaClient(
@@ -17,7 +17,8 @@ def create_client(provider: str, model: str, config: dict) -> LLMClient:
             model=model,
             context_size=config.get("LMSTUDIO_CONTEXT_SIZE"),
             context_size_per_request=config.get("CONTEXT_SIZE_PER_REQUEST") == "1",
-            context_size_by_load=config.get("CONTEXT_SIZE_BY_MODEL_LOAD", False)
+            context_size_by_load=config.get("CONTEXT_SIZE_BY_MODEL_LOAD", False),
+            verbose=verbose
         )
     else:
         raise ValueError(f"Unknown provider: {provider}")
