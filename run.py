@@ -65,14 +65,6 @@ KEEP_TEMP_FILES = bool_from_env("KEEP_TEMP_FILES", False)
 OCR_PROMPT = os.getenv("OCR_PROMPT", "")
 OCR_PROMPT_FILE = os.getenv("OCR_PROMPT_FILE", "")
 
-# Multi-page config
-MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
-
-# Step prompts (required for multi-step processing)
-OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
-OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
-OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
-
 # Initialize LLM Manager
 from clients import create_client
 from clients.manager import LLMManager
@@ -108,10 +100,17 @@ def load_prompt(env_key: str, file_key: str, default: str) -> str:
 # Prompt for OCR
 OCR_PROMPT_TEXT = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE", "Convert this image to markdown")
 
-# Multi-phase prompts
-OCR_PROMPT_STEP1 = load_prompt("", "OCR_PROMPT_FILE_STEP1", "")
-OCR_PROMPT_STEP2 = load_prompt("", "OCR_PROMPT_FILE_STEP2", "")
-OCR_PROMPT_STEP3 = load_prompt("", "OCR_PROMPT_FILE_STEP3", "")
+# Multi-phase prompts - loaded from model_config.toml [prompts] section
+def load_prompt_from_config(step: int) -> str:
+    """Load prompt for a step from model_config.toml [prompts] section."""
+    prompt_path = llm_manager.get_prompt_file_path(step)
+    if prompt_path and prompt_path.exists():
+        return prompt_path.read_text(encoding="utf-8").strip()
+    return ""
+
+OCR_PROMPT_STEP1 = load_prompt_from_config(1)
+OCR_PROMPT_STEP2 = load_prompt_from_config(2)
+OCR_PROMPT_STEP3 = load_prompt_from_config(3)
 
 # Test config
 TEST_PDF = os.getenv("TEST_PDF")
@@ -415,10 +414,10 @@ temp_filenames = [img.name for img in images]
 
 # Check if prompts are loaded
 if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
-    print("[ERROR] All 3 step prompts are required:")
-    print(f"  - OCR_PROMPT_FILE_STEP1: {'SET' if OCR_PROMPT_FILE_STEP1 else 'MISSING'}")
-    print(f"  - OCR_PROMPT_FILE_STEP2: {'SET' if OCR_PROMPT_FILE_STEP2 else 'MISSING'}")
-    print(f"  - OCR_PROMPT_FILE_STEP3: {'SET' if OCR_PROMPT_FILE_STEP3 else 'MISSING'}")
+    print("[ERROR] All 3 step prompts are required (set in model_config.toml [prompts] section):")
+    print(f"  - step1_file: {'SET' if OCR_PROMPT_STEP1 else 'MISSING'}")
+    print(f"  - step2_file: {'SET' if OCR_PROMPT_STEP2 else 'MISSING'}")
+    print(f"  - step3_file: {'SET' if OCR_PROMPT_STEP3 else 'MISSING'}")
     exit(1)
 
 # ============ STEP 1: Plain OCR ============

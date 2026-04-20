@@ -10,5 +10,10 @@ model = "glm-ocr@f16"
 
 [step_2_and_3]
 model = "google/gemma-3-12b"
+CONTEXT_SIZE_BY_MODEL_LOAD = true
 context_size = 16384
-CONTEXT_SIZE_BY_MODEL_LOAD = true  # Explizit laden mit context_size
+
+[prompts]
+step1_file = "prompts/multiphase_step1_ocr.md"
+step2_file = "prompts/multiphase_step2_metadata.md"
+step3_file = "prompts/multiphase_step3_finalize.md"
