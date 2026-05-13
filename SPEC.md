@@ -119,6 +119,70 @@ WENN SIMPLE_ENV_MODE=1:
 
 **Hinweis:** Diese Variablen werden für `SIMPLE_ENV_MODE=1` später wieder implementiert. Aktuell auf Eis gelegt.
 
+## Batch Processing
+
+### Input Modes
+
+| Mode | ENV | CLI | Beschreibung |
+|------|-----|-----|---------------|
+| Single | `TEST_PDF=pfad/datei.pdf` | `--TEST_PDF pfad/datei.pdf` | Einzelne Datei |
+| Directory | `INPUT_DIR=./pdfs` | `--INPUT_DIR ./pdfs` | Alle PDFs im Ordner |
+| Recursive | `INPUT_DIR=./pdfs` + `RECURSIVE=1` | `--INPUT_DIR ./pdfs --RECURSIVE 1` | Inkl. Unterordner |
+
+### ENV-Variablen
+
+```env
+# Input
+INPUT_MODE=single          # single | directory | recursive (default: single)
+INPUT_DIR=./pdfs           # Verzeichnis für Batch
+RECURSIVE=0                # 1 = inkl. Unterordner
+
+# Output
+OUTPUT_DIR=./output        # Ausgabe-Verzeichnis
+OUTPUT_STRUCTURE=preserve  # preserve | flat
+```
+
+### CLI-Parameter
+
+```bash
+# Single PDF
+python run.py --TEST_PDF datei.pdf
+
+# Batch: alle PDFs im Ordner
+python run.py --INPUT_DIR ./pdfs
+
+# Batch: rekursiv inkl. Unterordner
+python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
+```
+
+### Output-Struktur
+
+| INPUT_MODE | Input | Output |
+|------------|-------|--------|
+| single | `datei.pdf` | `output/datei.md` |
+| directory | `./pdfs/datei.pdf` | `output/datei.md` |
+| recursive | `./pdfs/sub/datei.pdf` | `output/sub/datei.md` |
+
+### Pro PDF generierte Dateien
+
+- `[name].md` - Finales Markdown
+- `[name]_single_pages.md` - Step 1 Output (bei MULTIPHASE)
+- `[name]_metadata.yaml` - Step 2 Output (bei MULTIPHASE)
+
+### Batch-Logik
+
+```
+1. Input sammeln (single/directory/recursive)
+2. Für jede PDF-Datei:
+   a. Preflight-Check (Modelle verfügbar?)
+   b. PDF → PNG (jede Seite)
+   c. Step 1 (wenn step1_cfg gesetzt)
+   d. Step 2 (wenn step2_cfg gesetzt)
+   e. Step 3 (wenn step3_cfg gesetzt)
+   f. Output-Dateien schreiben
+3. Zusammenfassung: X Dateien erfolgreich, Y Fehler
+```
+
 ## Config
 
 ```env
