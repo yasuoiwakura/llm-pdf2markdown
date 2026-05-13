@@ -43,24 +43,24 @@ class LLMManager:
         
         prompts_section = self.model_config.get("prompts", {})
         if not prompts_section:
-            _debug(1, self.verbose, f"[WARN] No [prompts] section in model_config.toml")
+            debug(1, self.verbose, f"[WARN] No [prompts] section in model_config.toml")
             return None
         
         key = f"step{step}_file"
         prompt_file = prompts_section.get(key)
         
         if not prompt_file:
-            _debug(1, self.verbose, f"[WARN] No '{key}' in [prompts] section")
+            debug(1, self.verbose, f"[WARN] No '{key}' in [prompts] section")
             return None
         
         # Resolve relative path from model_config.toml location
         prompt_path = (self.model_config_path.parent / prompt_file).resolve()
         
         if not prompt_path.exists():
-            _debug(1, self.verbose, f"[WARN] Prompt file not found: {prompt_path}")
+            debug(1, self.verbose, f"[WARN] Prompt file not found: {prompt_path}")
             return None
         
-        _debug(2, self.verbose, f"Prompt file for step {step}: {prompt_path}")
+        debug(2, self.verbose, f"Prompt file for step {step}: {prompt_path}")
         return prompt_path
     
     def _create_client_for_config(self, cfg_section: Dict[str, Any], provider: str, cfg_name: str = "") -> LLMClient:

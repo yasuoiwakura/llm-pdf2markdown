@@ -125,22 +125,9 @@ class LMStudioClient(LLMClient):
                 f"{self.url}/api/v1/models/unload",
                 json={"instance_id": self._instance_id}
             )
-            debug(3, f"← Response: {resp.status_code}")
+            debug(self.verbose, 3, f"<-- Response: {resp.status_code}")
         except Exception as e:
-            debug(3, f"← Error: {e}")
-        finally:
-            self._instance_id = ""
-            self._was_explicitly_loaded = False
-        if not self._instance_id:
-            return
-        
-        try:
-            self._client.post(
-                f"{self.url}/api/v1/models/unload",
-                json={"instance_id": self._instance_id}
-            )
-        except:
-            pass
+            debug(self.verbose, 3, f"<-- Error: {e}")
         finally:
             self._instance_id = ""
             self._was_explicitly_loaded = False
