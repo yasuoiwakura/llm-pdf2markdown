@@ -2,7 +2,35 @@
 
 Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
-## Status: MVP (Multi-phase OCR)
+## Status: MVP (Multi-phase OCR + Batch)
+
+### Stabil (Getestet)
+- ✓ TOML-basierte Modellkonfiguration
+- ✓ Step-spezifische CONTEXT_SIZE_BY_MODEL_LOAD
+- ✓ Verbose/Debug Output
+- ✓ Keine Bugs (zirkulärer Import, doppelter Durchlauf)
+- ✓ Batch/Verzeichnis-Verarbeitung (--input-dir, --recursive)
+- ✓ Output-Struktur (preserve/flat)
+
+### Geplant (NICHT im Code)
+- Step 3: Metadaten-Einbettung in finales Markdown
+
+### Auf Eis
+- SIMPLE_ENV_MODE (simple .env mode)
+
+### CLI Help
+
+`--help` und `-h` müssen alle verfügbaren CLI-Parameter anzeigen:
+
+```bash
+python run.py --help
+python run.py -h
+```
+
+**CLI-Parameter-Anforderungen:**
+- Alle ENV-Variablen als CLI-Parameter verfügbar (identische Namen, inkl. Capslock)
+- Hilfe-Text für jeden Parameter
+- Gruppen: Input, Output, LLM, Model Config
 
 ## README.md
 
@@ -332,37 +360,39 @@ Das Markdown wird mit Page-Markern strukturiert:
 Alle ENV-Variablen können per CLI überschrieben werden. Parameter-Namen sind identisch mit ENV-Variablen (inkl. Capslock).
 
 ```bash
-python run.py --OLLAMA_MODEL gemma3-4b --OUTPUT_INCLUDE_METADATA 1 --MULTIPHASE_MODE 1
+python run.py --OLLAMA_MODEL gemma3-4b --OUTPUT_INCLUDE_METADATA 1
 ```
 
-| CLI-Parameter | Überschreibt ENV |
-|--------------|------------------|
-| --USE_OLLAMA | USE_OLLAMA |
-| --USE_LMSTUDIO | USE_LMSTUDIO |
-| --OLLAMA_URL | OLLAMA_URL |
-| --OLLAMA_MODEL | OLLAMA_MODEL |
-| --OLLAMA_KEEP_ALIVE | OLLAMA_KEEP_ALIVE |
-| --LMSTUDIO_URL | LMSTUDIO_URL |
-| --LMSTUDIO_MODEL | LMSTUDIO_MODEL |
-| --LMSTUDIO_CONTEXT_SIZE | LMSTUDIO_CONTEXT_SIZE |
-| --CONTEXT_SIZE_BY_MODEL_LOAD | CONTEXT_SIZE_BY_MODEL_LOAD |
-| --CONTEXT_SIZE_PER_REQUEST | CONTEXT_SIZE_PER_REQUEST |
-| --MAX_PAGES_PER_REQUEST | MAX_PAGES_PER_REQUEST |
-| --OCR_PROMPT | OCR_PROMPT |
-| --OCR_PROMPT_FILE | OCR_PROMPT_FILE |
-| --MULTIPHASE_MODE | MULTIPHASE_MODE |
-| --MULTIPHASE_MODEL_STEP1_OCR | MULTIPHASE_MODEL_STEP1_OCR |
-| --OUTPUT_DIR | OUTPUT_DIR |
-| --OUTPUT_INTO_SAME_DIR | OUTPUT_INTO_SAME_DIR |
-| --OVERWRITE_OUTPUT_FILES | OVERWRITE_OUTPUT_FILES |
-| --KEEP_TEMP_FILES | KEEP_TEMP_FILES |
-| --FILENAME_INCLUDE_MODEL_TAG | FILENAME_INCLUDE_MODEL_TAG |
-| --OUTPUT_INCLUDE_METADATA | OUTPUT_INCLUDE_METADATA |
-| --TEST_PDF | TEST_PDF |
-| --INPUT_MODE | INPUT_MODE |
-| --INPUT_DIR | INPUT_DIR |
-| --RECURSIVE | RECURSIVE |
-| --OUTPUT_STRUCTURE | OUTPUT_STRUCTURE |
+### --help Anforderung
+
+`python run.py --help` muss alle verfügbaren CLI-Parameter anzeigen.
+
+| CLI-Parameter | Überschreibt ENV | Status |
+|--------------|------------------|--------|
+| --USE_OLLAMA | USE_OLLAMA | ✓ |
+| --USE_LMSTUDIO | USE_LMSTUDIO | ✓ |
+| --OLLAMA_URL | OLLAMA_URL | ✓ |
+| --OLLAMA_MODEL | OLLAMA_MODEL | ✓ |
+| --OLLAMA_KEEP_ALIVE | OLLAMA_KEEP_ALIVE | ✓ |
+| --LMSTUDIO_URL | LMSTUDIO_URL | ✓ |
+| --LMSTUDIO_MODEL | LMSTUDIO_MODEL | ✓ |
+| --LMSTUDIO_CONTEXT_SIZE | LMSTUDIO_CONTEXT_SIZE | ✓ |
+| --CONTEXT_SIZE_BY_MODEL_LOAD | CONTEXT_SIZE_BY_MODEL_LOAD | ✓ |
+| --CONTEXT_SIZE_PER_REQUEST | CONTEXT_SIZE_PER_REQUEST | ⚠️ broken |
+| --MAX_PAGES_PER_REQUEST | MAX_PAGES_PER_REQUEST | ✓ |
+| --OCR_PROMPT | OCR_PROMPT | ✓ |
+| --OCR_PROMPT_FILE | OCR_PROMPT_FILE | ✓ |
+| --OUTPUT_DIR | OUTPUT_DIR | ✓ |
+| --OUTPUT_INTO_SAME_DIR | OUTPUT_INTO_SAME_DIR | ✓ |
+| --OVERWRITE_OUTPUT_FILES | OVERWRITE_OUTPUT_FILES | ✓ |
+| --KEEP_TEMP_FILES | KEEP_TEMP_FILES | ✓ |
+| --FILENAME_INCLUDE_MODEL_TAG | FILENAME_INCLUDE_MODEL_TAG | ✓ |
+| --OUTPUT_INCLUDE_METADATA | OUTPUT_INCLUDE_METADATA | ✓ |
+| --TEST_PDF | TEST_PDF | ✓ |
+| --INPUT_MODE | INPUT_MODE | skipped (CLI uses --input-dir directly) |
+| --INPUT_DIR | INPUT_DIR | ✓ implemented |
+| --RECURSIVE | RECURSIVE | ✓ implemented |
+| --OUTPUT_STRUCTURE | OUTPUT_STRUCTURE | ✓ implemented |
 
 ## Output Metadata-Tag (bei OUTPUT_INCLUDE_METADATA=1)
 
@@ -676,9 +706,11 @@ ALWAYS start with the MINIMUM viable implementation:
 | 6 | Custom Prompts from .env or FILE | ✓ done |
 | 7 | Multi-page: All pages in single request | ✓ done |
 | 8 | Output-Tagging für Tuning | ✓ done |
-| 9 | **Step 1: Plain OCR (single pages)** | **current** |
-| 10 | Step 2: Metadata extraction | pending |
-| 11 | Step 3: Finalization | pending |
+| 9 | TOML-basierte Modellkonfiguration | ✓ done |
+| 10 | Step-spezifische Client-Instanzen | ✓ done |
+| 11 | Verbose/Debug Output | ✓ done |
+| 12 | **Batch/Verzeichnis-Verarbeitung** | ✓ done |
+| 13 | Step 3: Metadaten-Einbettung | planned |
 
 ### Step 1: Plain OCR (Current - MVP)
 - [ ] Process each page individually (1 API call per page)
