@@ -185,7 +185,7 @@ RECURSIVE=0                # 1 = inkl. Unterordner
 
 # Output
 OUTPUT_DIR=./output        # Ausgabe-Verzeichnis
-OUTPUT_STRUCTURE=preserve  # preserve | flat
+OUTPUT_STRUCTURE=preserve  # preserve | flat | source_dir
 ```
 
 ### CLI-Parameter
@@ -203,11 +203,36 @@ python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
 
 ### Output-Struktur
 
-| INPUT_MODE | Input | Output |
-|------------|-------|--------|
-| single | `datei.pdf` | `output/datei.md` |
-| directory | `./pdfs/datei.pdf` | `output/datei.md` |
-| recursive | `./pdfs/sub/datei.pdf` | `output/sub/datei.md` |
+| OUTPUT_STRUCTURE | Beschreibung |
+|------------------|---------------|
+| `preserve` | Original-Verzeichnisstruktur beibehalten (default) |
+| `flat` | Alle Ausgaben direkt in OUTPUT_DIR |
+| `source_dir` | Struktur des Input-Verzeichnisses beibehalten |
+
+**Beispiel:**
+```
+INPUT_DIR=./pdfs
+OUTPUT_DIR=./output
+INPUT: pdfs/sub/test.pdf
+
+preserve → output/sub/test.md
+flat → output/test.md
+source_dir → output/./pdfs/sub/test.md (oder adjustiert)
+```
+
+### --help Batch-Mode Info
+
+`python run.py --help` muss Batch-Mode Default-Verhalten erklären:
+
+```
+Batch Mode (--INPUT_DIR):
+  - Default: OUTPUT_STRUCTURE=preserve (Struktur beibehalten)
+  - Anpassung: --OUTPUT_STRUCTURE flat|source_dir
+
+Beispiel:
+  python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
+  python run.py --INPUT_DIR ./pdfs --OUTPUT_STRUCTURE flat
+```
 
 ### Pro PDF generierte Dateien
 
