@@ -8,10 +8,179 @@ Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
 User-Dokumentation: Siehe README.md
 
+## Model Configuration (model_config.toml)
+
+Separate TOML-Datei für Modellzuordnung pro Step.
+
+### Struktur
+
+```toml
+# Zuordnung: welche Config für welchen Step
+step1_cfg="step1"
+step2_cfg="step_2_and_3"
+step3_cfg="step_2_and_3"
+
+[step1]
+model="glm-ocr@f16"
+prompt="do OCR"                    # ODER
+prompt_file="prompts/step1.md"    # ODER
+
+[step_2_and_3]
+model="google/gemma-3-12b-16k"
+context_size=16384
+prompt="extract metadata"          # ODER
+prompt_file="prompts/step2.md"     # ODER
+```
+
+### Prompt Präzedenz
+
+```
+WENN prompt_file definiert:
+    → Lese Prompt aus Datei (höchste Priorität)
+SONST WENN prompt definiert:
+    → Nutze inline Prompt
+SONST:
+    → Fallback auf .env (OCR_PROMPT)
+```
+
+### Logik
+
+- `step1_cfg`, `step2_cfg`, `step3_cfg` referenzieren Section-Namen
+- `[step1]` → Step 1 Modell (eigenständig)
+- `[step_2_and_3]` → Step 2+3 Modell (shared)
+
+### Instance Management
+
+```
+WENN next_step_config == current_step_config:
+    → Wiederverwendung des gleichen Client-Objekts
+    → NICHT neu laden
+SONST:
+    → Neue Client-Instanz erstellen
+    → Alte Instanz entladen (falls nötig)
+```
+
+### Preflight Check
+
+Nur verwendete Modelle prüfen (keine Duplikate):
+
+```
+1. Lese step*_cfg Zuordnungen
+2. Extrahiere EINMALIGE Config-Namen (unique)
+3. Prüfe nur diese Modelle via API
+4. Bei Fehler: Stopp + klare Fehlermeldung
+```
+
+**Beispiel:**
+```toml
+step1_cfg="step1"
+step2_cfg="step_2_and_3"
+step3_cfg="step_2_and_3"
+```
+→ Prüfe: `step1`, `step_2_and_3` (2 Modelle, nicht 3)
+
 ## Run
 
 ```bash
 python run.py
+```
+
+## Configuration Strategy
+
+### SIMPLE_ENV_MODE
+
+```env
+SIMPLE_ENV_MODE=0  # Default: 0 = TOML (komplex), 1 = einfache .env
+```
+
+### Fallback-Logik
+
+| SIMPLE_ENV_MODE | model_config.toml | Modus |
+|----------------|-------------------|-------|
+| 0 | Vorhanden | TOML (3-Step) |
+| 0 | Nicht vorhanden | Fehler |
+| 1 | - | Einfache .env (single-pass, zukünftig) |
+
+```
+WENN SIMPLE_ENV_MODE=0 UND model_config.toml existiert:
+    → Nutze TOML (3-Step)
+WENN SIMPLE_ENV_MODE=1:
+    → Nutze einfache .env Variablen (single-pass, zukünftig)
+```
+
+### Ersetzte Variablen (Deprecated - für SIMPLE_ENV_MODE=1 später)
+
+| Alte Variable | Status | Zukunft |
+|---------------|--------|---------|
+| `MULTIPHASE_MODE` | **ERSETZT** | → `SIMPLE_ENV_MODE` |
+| `LMSTUDIO_MODEL` (global) | Deprecated | → TOML `[step*]` sections |
+| `LMSTUDIO_CONTEXT_SIZE` | Deprecated | → TOML `context_size` |
+| `OCR_PROMPT_FILE_STEP*` | Deprecated | → TOML `prompt`/`prompt_file` |
+
+**Hinweis:** Diese Variablen werden für `SIMPLE_ENV_MODE=1` später wieder implementiert. Aktuell auf Eis gelegt.
+
+## Batch Processing
+
+### Input Modes
+
+| Mode | ENV | CLI | Beschreibung |
+|------|-----|-----|---------------|
+| Single | `TEST_PDF=pfad/datei.pdf` | `--TEST_PDF pfad/datei.pdf` | Einzelne Datei |
+| Directory | `INPUT_DIR=./pdfs` | `--INPUT_DIR ./pdfs` | Alle PDFs im Ordner |
+| Recursive | `INPUT_DIR=./pdfs` + `RECURSIVE=1` | `--INPUT_DIR ./pdfs --RECURSIVE 1` | Inkl. Unterordner |
+
+### ENV-Variablen
+
+```env
+# Input
+INPUT_MODE=single          # single | directory | recursive (default: single)
+INPUT_DIR=./pdfs           # Verzeichnis für Batch
+RECURSIVE=0                # 1 = inkl. Unterordner
+
+# Output
+OUTPUT_DIR=./output        # Ausgabe-Verzeichnis
+OUTPUT_STRUCTURE=preserve  # preserve | flat
+```
+
+### CLI-Parameter
+
+```bash
+# Single PDF
+python run.py --TEST_PDF datei.pdf
+
+# Batch: alle PDFs im Ordner
+python run.py --INPUT_DIR ./pdfs
+
+# Batch: rekursiv inkl. Unterordner
+python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
+```
+
+### Output-Struktur
+
+| INPUT_MODE | Input | Output |
+|------------|-------|--------|
+| single | `datei.pdf` | `output/datei.md` |
+| directory | `./pdfs/datei.pdf` | `output/datei.md` |
+| recursive | `./pdfs/sub/datei.pdf` | `output/sub/datei.md` |
+
+### Pro PDF generierte Dateien
+
+- `[name].md` - Finales Markdown
+- `[name]_single_pages.md` - Step 1 Output (bei MULTIPHASE)
+- `[name]_metadata.yaml` - Step 2 Output (bei MULTIPHASE)
+
+### Batch-Logik
+
+```
+1. Input sammeln (single/directory/recursive)
+2. Für jede PDF-Datei:
+   a. Preflight-Check (Modelle verfügbar?)
+   b. PDF → PNG (jede Seite)
+   c. Step 1 (wenn step1_cfg gesetzt)
+   d. Step 2 (wenn step2_cfg gesetzt)
+   e. Step 3 (wenn step3_cfg gesetzt)
+   f. Output-Dateien schreiben
+3. Zusammenfassung: X Dateien erfolgreich, Y Fehler
 ```
 
 ## Config
@@ -76,7 +245,12 @@ OCR_PROMPT_FILE_STEP2=prompts/multiphase_step2_metadata.md
 # Step 3: Finalisierung
 OCR_PROMPT_FILE_STEP3=prompts/multiphase_step3_finalize.md
 
+# Batch Processing
 TEST_PDF=exampledata/test.pdf
+INPUT_MODE=single
+INPUT_DIR=./pdfs
+RECURSIVE=0
+OUTPUT_STRUCTURE=preserve
 ```
 
 ## Multi-Phase Processing (3-Stufig)
@@ -185,6 +359,10 @@ python run.py --OLLAMA_MODEL gemma3-4b --OUTPUT_INCLUDE_METADATA 1 --MULTIPHASE_
 | --FILENAME_INCLUDE_MODEL_TAG | FILENAME_INCLUDE_MODEL_TAG |
 | --OUTPUT_INCLUDE_METADATA | OUTPUT_INCLUDE_METADATA |
 | --TEST_PDF | TEST_PDF |
+| --INPUT_MODE | INPUT_MODE |
+| --INPUT_DIR | INPUT_DIR |
+| --RECURSIVE | RECURSIVE |
+| --OUTPUT_STRUCTURE | OUTPUT_STRUCTURE |
 
 ## Output Metadata-Tag (bei OUTPUT_INCLUDE_METADATA=1)
 

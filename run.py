@@ -2,11 +2,21 @@ import os
 import shutil
 import json
 import base64
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 import pypdfium2
 
 load_dotenv()
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description="Convert PDFs to Markdown using local LLM")
+parser.add_argument("--verbose", "-v", type=int, default=None, help="Verbosity level (0-3)")
+parser.add_argument("--test-pdf", type=str, default=None, help="Override TEST_PDF")
+args = parser.parse_args()
+
+# Debug config (early, with CLI override)
+VERBOSE = args.verbose if args.verbose is not None else int(os.getenv("VERBOSE", "0"))
 
 # Boolean parsing helper (idiotensicher)
 def bool_from_env(env_name: str, default: bool = False) -> bool:
@@ -55,30 +65,17 @@ KEEP_TEMP_FILES = bool_from_env("KEEP_TEMP_FILES", False)
 OCR_PROMPT = os.getenv("OCR_PROMPT", "")
 OCR_PROMPT_FILE = os.getenv("OCR_PROMPT_FILE", "")
 
-# Multi-page config
-MAX_PAGES_PER_REQUEST = int(os.getenv("MAX_PAGES_PER_REQUEST", "4"))
-
-# Multi-phase config
-MULTIPHASE_MODE = bool_from_env("MULTIPHASE_MODE", False)
-MULTIPHASE_MODEL_STEP1_OCR = os.getenv("MULTIPHASE_MODEL_STEP1_OCR", "")
-OCR_PROMPT_FILE_STEP1 = os.getenv("OCR_PROMPT_FILE_STEP1", "")
-OCR_PROMPT_FILE_STEP2 = os.getenv("OCR_PROMPT_FILE_STEP2", "")
-OCR_PROMPT_FILE_STEP3 = os.getenv("OCR_PROMPT_FILE_STEP3", "")
-
-# Add to config for LLMManager
-CONFIG["MULTIPHASE_MODEL_STEP1_OCR"] = MULTIPHASE_MODEL_STEP1_OCR
-
 # Initialize LLM Manager
 from clients import create_client
 from clients.manager import LLMManager
 
-llm_manager = LLMManager(CONFIG)
+llm_manager = LLMManager(CONFIG, verbose=VERBOSE)
 
 # Determine provider
 if USE_LMSTUDIO:
     PROVIDER = "LM Studio"
     URL = CONFIG["LMSTUDIO_URL"]
-    MODEL = CONFIG["LMSTUDIO_MODEL"]
+    MODEL = CONFIG.get("LMSTUDIO_MODEL", "")
 elif USE_OLLAMA:
     PROVIDER = "Ollama"
     URL = CONFIG["OLLAMA_URL"]
@@ -87,8 +84,6 @@ else:
     print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
     exit(1)
 
-# Initialize LLM clients through manager
-llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
 
 def load_prompt(env_key: str, file_key: str, default: str) -> str:
     """Load prompt from .env or from file."""
@@ -105,10 +100,17 @@ def load_prompt(env_key: str, file_key: str, default: str) -> str:
 # Prompt for OCR
 OCR_PROMPT_TEXT = load_prompt("OCR_PROMPT", "OCR_PROMPT_FILE", "Convert this image to markdown")
 
-# Multi-phase prompts
-OCR_PROMPT_STEP1 = load_prompt("", "OCR_PROMPT_FILE_STEP1", "")
-OCR_PROMPT_STEP2 = load_prompt("", "OCR_PROMPT_FILE_STEP2", "")
-OCR_PROMPT_STEP3 = load_prompt("", "OCR_PROMPT_FILE_STEP3", "")
+# Multi-phase prompts - loaded from model_config.toml [prompts] section
+def load_prompt_from_config(step: int) -> str:
+    """Load prompt for a step from model_config.toml [prompts] section."""
+    prompt_path = llm_manager.get_prompt_file_path(step)
+    if prompt_path and prompt_path.exists():
+        return prompt_path.read_text(encoding="utf-8").strip()
+    return ""
+
+OCR_PROMPT_STEP1 = load_prompt_from_config(1)
+OCR_PROMPT_STEP2 = load_prompt_from_config(2)
+OCR_PROMPT_STEP3 = load_prompt_from_config(3)
 
 # Test config
 TEST_PDF = os.getenv("TEST_PDF")
@@ -122,8 +124,6 @@ def debug(level: int, *args):
     if VERBOSE >= level:
         print(f"[DEBUG:{level}]", *args)
 
-# Global for loaded model instance
-LMSTUDIO_INSTANCE_ID = ""
 
 def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, source_file: str = "", temp_filenames: list[str] = None) -> str:
     """Replace placeholders in prompt."""
@@ -137,33 +137,25 @@ def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, so
     result = result.replace("{temp_filenames}", ", ".join(temp_filenames))
     return result
 
-# Add to config for LLMManager
-CONFIG["MULTIPHASE_MODEL_STEP1_OCR"] = MULTIPHASE_MODEL_STEP1_OCR
-
 # Initialize LLM Manager
 from clients import create_client
 from clients.manager import LLMManager
 
-llm_manager = LLMManager(CONFIG)
-
-# Determine provider
-if USE_LMSTUDIO:
-    PROVIDER = "LM Studio"
-    URL = CONFIG["LMSTUDIO_URL"]
-    MODEL = CONFIG["LMSTUDIO_MODEL"]
-elif USE_OLLAMA:
-    PROVIDER = "Ollama"
-    URL = CONFIG["OLLAMA_URL"]
-    MODEL = CONFIG["OLLAMA_MODEL"]
-else:
-    print("[ERROR] No LLM provider enabled (set USE_OLLAMA=true or USE_LMSTUDIO=true)")
-    exit(1)
+llm_manager = LLMManager(CONFIG, verbose=VERBOSE)
 
 # Initialize LLM clients through manager
 llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
 
+# Get model from first active step for debug display
+current_model = None
+for step in [1, 2, 3]:
+    client = llm_manager.get_client(step)
+    if client:
+        current_model = client.model
+        break
+
 # Zeige Konfiguration in einer Zeile bei verbose >= 1
-debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {MODEL}")
+debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {current_model}")
 
 
 def ping() -> bool:
@@ -174,8 +166,6 @@ def ping() -> bool:
 
 def get_models() -> list:
     """Get available models."""
-    # Use default client to check models
-    client = llm_manager.default_client
     if USE_LMSTUDIO:
         import httpx
         c = httpx.Client(timeout=10)
@@ -190,82 +180,57 @@ def get_models() -> list:
         return resp.json()["models"]
 
 
+def check_model_availability():
+    """Prüfe ob alle in model_config.toml definierten Modelle beim Server verfügbar sind."""
+    print("\n[Model Check] Checking availability of configured models...")
+    
+    # Get available models from server
+    try:
+        available_models = get_models()
+    except Exception as e:
+        print(f"[WARN] Could not fetch model list: {e}")
+        return
+    
+    # Extract model IDs based on provider
+    if USE_LMSTUDIO:
+        available_ids = [m.get("id", "") for m in available_models]
+    else:
+        available_ids = [m.get("name", "") for m in available_models]
+    
+    # Get configured models from LLMManager
+    configured_models = set()
+    for step in [1, 2, 3]:
+        client = llm_manager.get_client(step)
+        if client and client.model:
+            configured_models.add(client.model)
+    
+    # Check each configured model
+    all_available = True
+    for model in configured_models:
+        # Check if model is available (partial match for quantized variants)
+        found = any(model in available_id or available_id in model for available_id in available_ids)
+        if found:
+            debug(1, f"[OK] Model '{model}' is available")
+        else:
+            print(f"[WARN] Model '{model}' not found in available models")
+            all_available = False
+    
+    if not configured_models:
+        print("[WARN] No models configured")
+    elif all_available:
+        print(f"[OK] All {len(configured_models)} configured models available")
+    
+    return all_available
+
+
 def find_loaded_model() -> str:
-    """Find already loaded model with matching context_length."""
-    return ""  # Simplified - handled by manager now
-    
-    client = httpx.Client(timeout=10)
-    # resp = client.get(f"{URL}/api/v1/models")
-    resp = client.get(f"{URL}/api/v1/models")
-    if resp.status_code != 200:
-        return ""
-    
-    models = resp.json().get("data", [])
-    target_ctx = int(LMSTUDIO_CONTEXT_SIZE)
-    model_base = MODEL.split("/")[-1].split(":")[0]
-    
-    for m in models:
-        cfg = m.get("load_config", {})
-        loaded_ctx = cfg.get("context_length", 0)
-        model_id = m.get("id", "")
-        
-        # Prüfe: gleiche context_length UND gleiches Modell
-        if loaded_ctx == target_ctx and model_base in model_id:
-            return model_id
-    
+    """Legacy - now handled by LLMManager."""
     return ""
 
 
 def load_model() -> None:
     """Load model with context_length before chat."""
-    global LMSTUDIO_INSTANCE_ID
-    global CONTEXT_SIZE_BY_MO2DEL_LOAD
-
-    if not USE_LMSTUDIO or not LMSTUDIO_CONTEXT_SIZE:
-        return
-    if not CONTEXT_SIZE_BY_MODEL_LOAD:
-        return
-    
-    # ZUERST: Prüfen ob Modell bereits mit passender context_length geladen
-    existing_id = find_loaded_model()
-    if existing_id:
-        LMSTUDIO_INSTANCE_ID = existing_id
-        print(f"[OK] Using existing model with context_length: {LMSTUDIO_CONTEXT_SIZE}")
-        return
-    
-    # Nicht gefunden: neu laden
-    client = httpx.Client(timeout=120)
-    target_ctx = int(LMSTUDIO_CONTEXT_SIZE)
-    resp = client.post(
-        f"{URL}/api/v1/models/load",
-        json={
-            "model": MODEL,
-            "context_length": target_ctx
-        }
-    )
-    if resp.status_code == 200:
-        data = resp.json()
-        loaded_ctx = data.get("load_config", {}).get("context_length", "?")
-        LMSTUDIO_INSTANCE_ID = data.get("instance_id", "")
-        print(f"[OK] Model loaded with context_length: {loaded_ctx}, instance_id: {LMSTUDIO_INSTANCE_ID}")
-    elif resp.status_code == 409:
-        # Unloading and then loading again
-        client2 = httpx.Client(timeout=60)
-        unload_resp = client2.post(
-            f"{URL}/api/v1/models/unload",
-            json={"model": MODEL}
-        )
-        # Try loading again
-        resp = client.post(
-            f"{URL}/api/v1/models/load",
-            json={"model": MODEL, "context_length": target_ctx}
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            LMSTUDIO_INSTANCE_ID = data.get("instance_id", "")
-            print(f"[OK] Model loaded with context_length: {target_ctx}")
-    else:
-        resp.raise_for_status()
+    pass  # Legacy - now handled by LLMManager from model_config.toml
 
 
 def send_prompt(prompt: str, step: int = 2) -> str:
@@ -419,27 +384,8 @@ else:
     print(f"[FAIL] Cannot connect to {PROVIDER}")
     exit(1)
 
-# Check available models (verbose >= 3 OR check for desired model)
-models = get_models()
-if USE_LMSTUDIO:
-    model_base = MODEL.split("/")[-1].split(":")[0]
-    desired_found = any(model_base in m.get("id", "") for m in models)
-    if desired_found:
-        debug(1, f"Model '{MODEL}' is available")
-    else:
-        print(f"\n[WARN] Model '{MODEL}' not found in available models")
-    debug(3, "Available models: " + ", ".join(m.get("id", "?") for m in models))
-else:
-    debug(3, "Available models: " + ", ".join(f"{m.get('name', '?')} ({m.get('size', 0)//(1024*1024*1024)}GB)" for m in models))
-
-# Load model with context_length (if enabled)
-if USE_LMSTUDIO and LMSTUDIO_CONTEXT_SIZE:
-    load_model()
-
-# Step 0: Connection test
-print("\n[Preflight Check 1] Testing LLM connection...")
-response = send_prompt(f"Say 'Hello from {PROVIDER} and Python!' in exactly those words.")
-debug(3, f"Test response: {response[:50]}...")
+# Step 2: Check model availability (before any processing)
+check_model_availability()
 
 # Step 3: PDF → Images
 print(f"\n[Preparing data] Converting PDF to images: {TEST_PDF}")
@@ -466,126 +412,52 @@ total_pages = len(images)
 source_file = input_path.name
 temp_filenames = [img.name for img in images]
 
-# Debug: check if prompts are loaded
-debug(2, f"MULTIPHASE_MODE={MULTIPHASE_MODE}, STEP1 loaded={bool(OCR_PROMPT_STEP1)}, STEP2 loaded={bool(OCR_PROMPT_STEP2)}, STEP3 loaded={bool(OCR_PROMPT_STEP3)}")
+# Check if prompts are loaded
+if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
+    print("[ERROR] All 3 step prompts are required (set in model_config.toml [prompts] section):")
+    print(f"  - step1_file: {'SET' if OCR_PROMPT_STEP1 else 'MISSING'}")
+    print(f"  - step2_file: {'SET' if OCR_PROMPT_STEP2 else 'MISSING'}")
+    print(f"  - step3_file: {'SET' if OCR_PROMPT_STEP3 else 'MISSING'}")
+    exit(1)
 
-# MULTIPHASE_MODE: 3-Phase Processing
-if MULTIPHASE_MODE:
-    # Check if prompts are loaded
-    if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
-        print("[ERROR] MULTIPHASE_MODE=1 requires all 3 step prompts to be configured:")
-        print(f"  - OCR_PROMPT_FILE_STEP1: {'SET' if OCR_PROMPT_FILE_STEP1 else 'MISSING'}")
-        print(f"  - OCR_PROMPT_FILE_STEP2: {'SET' if OCR_PROMPT_FILE_STEP2 else 'MISSING'}")
-        print(f"  - OCR_PROMPT_FILE_STEP3: {'SET' if OCR_PROMPT_FILE_STEP3 else 'MISSING'}")
-        print("Falling back to single-pass mode (MULTIPHASE_MODE=0)")
-        MULTIPHASE_MODE = False
+# ============ STEP 1: Plain OCR ============
+print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
+single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
 
-if MULTIPHASE_MODE:
-    # ============ STEP 1: Plain OCR ============
-    print(f"\n[Step 1/{3}] Plain OCR - Processing {total_pages} pages individually...")
-    if OCR_PROMPT_STEP1:
-        single_pages_md = step1_ocr_single_pages(images, OCR_PROMPT_STEP1, total_pages)
-    else:
-        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP1 not set")
-        exit(1)
-    
-    # Speichere Step 1 Output
-    single_pages_path.write_text(single_pages_md, encoding="utf-8")
-    print(f"[OK] Saved: {single_pages_path}")
-    
-    # Cleanup Step 1 client if different from default
-    debug(1, "Cleaning up Step 1 client...")
-    llm_manager.cleanup_after_step1()
-    
-    # ============ STEP 2: Metadata ============
-    print(f"\n[Step 2/{3}] Extracting metadata from all pages...")
-    if OCR_PROMPT_STEP2:
-        metadata_yaml = step2_extract_metadata(images, OCR_PROMPT_STEP2, total_pages)
-    else:
-        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP2 not set")
-        exit(1)
-    
-    # Speichere Step 2 Output
-    metadata_path.write_text(metadata_yaml, encoding="utf-8")
-    print(f"[OK] Saved: {metadata_path}")
-    
-    # ============ STEP 3: Finalize ============
-    print(f"\n[Step 3/{3}] Finalizing document with metadata...")
-    if OCR_PROMPT_STEP3:
-        final_md = step3_finalize(single_pages_md, metadata_yaml, OCR_PROMPT_STEP3, total_pages)
-    else:
-        print("[ERROR] MULTIPHASE_MODE=1 but OCR_PROMPT_FILE_STEP3 not set")
-        exit(1)
-    
-    # Entferne Code-Fences
-    final_md = final_md.strip()
-    if final_md.startswith("```markdown"):
-        final_md = final_md[len("```markdown"):]
-    elif final_md.startswith("```"):
-        final_md = final_md[len("```"):]
-    if final_md.endswith("```"):
-        final_md = final_md[:-3]
-    final_md = final_md.strip()
-    
-    final_output_path.write_text(final_md, encoding="utf-8")
-    print(f"[OK] Saved: {final_output_path}")
-    
-    output_path = final_output_path
+# Speichere Step 1 Output
+single_pages_path.write_text(single_pages_md, encoding="utf-8")
+print(f"[OK] Saved: {single_pages_path}")
 
-else:
-    # ============ Single-pass (original) ============
-    print(f"\nConverting {total_pages} pages to Markdown...")
+# Cleanup Step 1 client if different from default
+debug(1, "Cleaning up Step 1 client...")
+llm_manager.cleanup_after_step1()
 
-    # Prüfe Schwellwert
-    if total_pages <= MAX_PAGES_PER_REQUEST:
-        # Single request mit allen Seiten
-        print(f"  Using single request (pages <= {MAX_PAGES_PER_REQUEST})")
-        prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, source_file=source_file, temp_filenames=temp_filenames)
-        md = send_prompt_with_multiple_images(images, prompt_with_vars)
-        all_markdowns = [md]
-    else:
-        # Multiple requests (seite für Seite)
-        print(f"  Using multiple requests (pages > {MAX_PAGES_PER_REQUEST})")
-        all_markdowns = []
-        for i, img in enumerate(images, 1):
-            print(f"  Page {i}/{total_pages}...")
-            prompt_with_vars = replace_prompt_vars(OCR_PROMPT_TEXT, total_pages, i, source_file, temp_filenames)
-            md = send_prompt_with_image(img, prompt_with_vars)
-            all_markdowns.append(md)
-            print(f"    Done: {len(md)} chars")
+# ============ STEP 2: Metadata ============
+print(f"\n[Step 2/{3}] Extracting metadata from all pages...")
+metadata_yaml = step2_extract_metadata(images, OCR_PROMPT_STEP2, total_pages)
 
-    # Speichere Markdown
-    if len(all_markdowns) == 1:
-        output_md = all_markdowns[0]
-    else:
-        output_md = "\n\n---\n\n".join(all_markdowns)
+# Speichere Step 2 Output
+metadata_path.write_text(metadata_yaml, encoding="utf-8")
+print(f"[OK] Saved: {metadata_path}")
 
-    # Remove markdown code fences from LLM response
-    output_md = output_md.strip()
-    if output_md.startswith("```markdown"):
-        output_md = output_md[len("```markdown"):]
-    elif output_md.startswith("```"):
-        output_md = output_md[len("```"):]
-    if output_md.endswith("```"):
-        output_md = output_md[:-3]
-    output_md = output_md.strip()
+# ============ STEP 3: Finalize ============
+print(f"\n[Step 3/{3}] Finalizing document with metadata...")
+final_md = step3_finalize(single_pages_md, metadata_yaml, OCR_PROMPT_STEP3, total_pages)
 
-    # Bestimme Output-Pfad
-    if OUTPUT_INTO_SAME_DIR:
-        output_path = input_path.with_suffix(".md")
-    else:
-        output_path = Path(OUTPUT_DIR) / input_path.with_suffix(".md").name
+# Entferne Code-Fences
+final_md = final_md.strip()
+if final_md.startswith("```markdown"):
+    final_md = final_md[len("```markdown"):]
+elif final_md.startswith("```"):
+    final_md = final_md[len("```"):]
+if final_md.endswith("```"):
+    final_md = final_md[:-3]
+final_md = final_md.strip()
 
-    # Prüfe ob Datei bereits existiert
-    if output_path.exists():
-        if OVERWRITE_OUTPUT_FILES:
-            print(f"[WARN] Overwriting: {output_path}")
-        else:
-            print(f"[ERROR] File already exists: {output_path}")
-            exit(1)
+final_output_path.write_text(final_md, encoding="utf-8")
+print(f"[OK] Saved: {final_output_path}")
 
-    output_path.write_text(output_md, encoding="utf-8")
-    print(f"[OK] Saved: {output_path}")
+output_path = final_output_path
 
 # Cleanup temp images
 if not KEEP_TEMP_FILES:

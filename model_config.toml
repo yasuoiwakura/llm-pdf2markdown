@@ -1,0 +1,19 @@
+# Model Configuration
+# Zuordnung: welche Config für welchen Step
+step1_cfg="step1"
+step2_cfg="step_2_and_3"
+step3_cfg="step_2_and_3"
+
+[step1]
+model = "glm-ocr@f16"
+# Kein context_size und kein CONTEXT_SIZE_BY_MODEL_LOAD → implizit laden
+
+[step_2_and_3]
+model = "google/gemma-3-12b"
+CONTEXT_SIZE_BY_MODEL_LOAD = true
+context_size = 16384
+
+[prompts]
+step1_file = "prompts/multiphase_step1_ocr.md"
+step2_file = "prompts/multiphase_step2_metadata.md"
+step3_file = "prompts/multiphase_step3_finalize.md"
