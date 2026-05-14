@@ -215,6 +215,23 @@ python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
 - `[name]_single_pages.md` - Step 1 Output (bei MULTIPHASE)
 - `[name]_metadata.yaml` - Step 2 Output (bei MULTIPHASE)
 
+### Logging
+
+Log-Dateien werden im Unterverzeichnis `logs` gespeichert:
+
+```env
+LOG_DIR=logs    # Default: logs/
+```
+
+**Struktur:**
+```
+logs/
+├── app.log         # Haupt-Log
+└── debug.log       # Debug-Output (bei VERBOSE=3)
+```
+
+**Späteres Feature:** `LOG_DIR` per CLI/.env überschreibbar.
+
 ### Batch-Logik
 
 ```
@@ -269,6 +286,9 @@ OUTPUT_DIR=output
 OUTPUT_INTO_SAME_DIR=true
 OVERWRITE_OUTPUT_FILES=0
 KEEP_TEMP_FILES=0
+
+# Logging
+LOG_DIR=logs           # Log-Dateien (später: LOG_DIR überschreibbar)
 
 # Output-Tagging für Tuning-Vergleich
 FILENAME_INCLUDE_MODEL_TAG=0    # 1 = [model_name] im Dateinamen, z.B. test[gemma3-4b].md
@@ -411,6 +431,7 @@ python run.py --OLLAMA_MODEL gemma3-4b --OUTPUT_INCLUDE_METADATA 1
 | --INPUT_DIR | INPUT_DIR | ✓ implemented |
 | --RECURSIVE | RECURSIVE | ✓ implemented |
 | --OUTPUT_STRUCTURE | OUTPUT_STRUCTURE | ✓ implemented |
+| --LOG_DIR | LOG_DIR | planned |
 
 ## Output Metadata-Tag (bei OUTPUT_INCLUDE_METADATA=1)
 
