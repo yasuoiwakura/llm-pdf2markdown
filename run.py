@@ -31,17 +31,8 @@ args = parser.parse_args()
 # Batch options override from CLI
 if args.input_dir is not None:
     INPUT_DIR = args.input_dir
-if args.recursive:
-    RECURSIVE = True
-if args.output_structure is not None:
-    OUTPUT_STRUCTURE = args.output_structure
-if args.overwrite:
-    OVERWRITE_OUTPUT_FILES = True
-if args.output_dir is not None:
-    OUTPUT_DIR = args.output_dir
-
-# Legacy: TEST_PDF from CLI
-TEST_PDF = args.test_pdf if args.test_pdf else os.getenv("TEST_PDF")
+else:
+    INPUT_DIR = os.getenv("INPUT_DIR")  # Only from env if not CLI
 
 # Debug config (early, with CLI override)
 VERBOSE = args.verbose if args.verbose is not None else int(os.getenv("VERBOSE", "0"))
@@ -84,10 +75,27 @@ LMSTUDIO_CONTEXT_SIZE = os.getenv("LMSTUDIO_CONTEXT_SIZE", "")
 CONTEXT_SIZE_BY_MODEL_LOAD = bool_from_env("CONTEXT_SIZE_BY_MODEL_LOAD", False)
 
 # Output config
-OUTPUT_DIR = os.getenv("OUTPUT_DIR", "")
+if args.output_dir is not None:
+    OUTPUT_DIR = args.output_dir
+else:
+    OUTPUT_DIR = os.getenv("OUTPUT_DIR", "")
 OUTPUT_INTO_SAME_DIR = bool_from_env("OUTPUT_INTO_SAME_DIR", True)
 OVERWRITE_OUTPUT_FILES = bool_from_env("OVERWRITE_OUTPUT_FILES", False)
+if args.overwrite:
+    OVERWRITE_OUTPUT_FILES = True
 KEEP_TEMP_FILES = bool_from_env("KEEP_TEMP_FILES", False)
+
+# Recursive config
+if args.recursive:
+    RECURSIVE = True
+else:
+    RECURSIVE = bool_from_env("RECURSIVE", False)
+
+# Output structure config
+if args.output_structure is not None:
+    OUTPUT_STRUCTURE = args.output_structure
+else:
+    OUTPUT_STRUCTURE = os.getenv("OUTPUT_STRUCTURE", "preserve")
 
 # Prompt config
 OCR_PROMPT = os.getenv("OCR_PROMPT", "")
@@ -142,7 +150,7 @@ OCR_PROMPT_STEP3 = load_prompt_from_config(3)
 
 # Test config
 TEST_PDF = os.getenv("TEST_PDF")
-INPUT_DIR = os.getenv("INPUT_DIR")
+# INPUT_DIR is set from CLI argument above (line 32-35)
 RECURSIVE = bool_from_env("RECURSIVE", False)
 OUTPUT_STRUCTURE = os.getenv("OUTPUT_STRUCTURE", "preserve")
 SCALE = 2.0
@@ -370,9 +378,14 @@ def step2_extract_metadata(images: list[Path], prompt: str, total_pages: int) ->
     client = llm_manager.get_client(2)
     print(f"\n=== Step 2: Metadata Extraction ===")
     print(f"[INFO] Model: {client.model}")
+    debug(2, f"Sending {len(images)} images to LLM")
     
     page_prompt = replace_prompt_vars(prompt, total_pages)
-    md = send_prompt_with_multiple_images(images, page_prompt, step=2)
+    try:
+        md = send_prompt_with_multiple_images(images, page_prompt, step=2)
+    except Exception as e:
+        debug(1, f"Error in Step 2: {e}")
+        raise
     
     # Entferne Code-Fences
     md = md.strip()
@@ -454,8 +467,9 @@ def process_single_pdf(pdf_path: Path, output_base_dir: Path) -> tuple[bool, str
         # Determine output paths
         if OUTPUT_STRUCTURE == "preserve" and OUTPUT_DIR:
             # Preserve directory structure
+            input_dir_path = Path(INPUT_DIR) if INPUT_DIR else pdf_path.parent
             try:
-                rel_path = pdf_path.resolve().relative_to(Path(INPUT_DIR).resolve())
+                rel_path = pdf_path.resolve().relative_to(input_dir_path.resolve())
                 output_dir = output_base_dir / rel_path.parent
             except ValueError:
                 output_dir = output_base_dir
@@ -530,6 +544,9 @@ def process_single_pdf(pdf_path: Path, output_base_dir: Path) -> tuple[bool, str
 def process_batch():
     """Process multiple PDFs from a directory."""
     input_dir = Path(INPUT_DIR)
+    print(f"[DEBUG] INPUT_DIR = {repr(INPUT_DIR)}", flush=True)
+    print(f"[DEBUG] input_dir = {repr(input_dir)}", flush=True)
+    print(f"[DEBUG] input_dir.exists() = {input_dir.exists()}", flush=True)
     
     if not input_dir.exists():
         print(f"[ERROR] Input directory does not exist: {input_dir}")
@@ -537,6 +554,7 @@ def process_batch():
     
     # Collect PDFs
     pdfs = collect_pdfs(input_dir, RECURSIVE)
+    print(f"[DEBUG] collect_pdfs returned {len(pdfs)} PDFs", flush=True)
     
     if not pdfs:
         print(f"[ERROR] No PDF files found in: {input_dir}")
@@ -559,10 +577,35 @@ def process_batch():
     output_base_dir.mkdir(parents=True, exist_ok=True)
     
     # Process each PDF
+    import sys
+    print(f"\n[START] Processing {len(pdfs)} PDFs...", flush=True)
+    sys.stdout.flush()
     results = []
     for i, pdf_path in enumerate(pdfs, 1):
-        success, error = process_single_pdf(pdf_path, output_base_dir)
+        print(f"[PROGRESS] {i}/{len(pdfs)}: {pdf_path.name}", flush=True)
+        sys.stdout.flush()
+        try:
+            success, error = process_single_pdf(pdf_path, output_base_dir)
+        except Exception as e:
+            print(f"[ERROR] Exception processing {pdf_path.name}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            success, error = False, str(e)
         results.append((pdf_path.name, success, error))
+        print(f"[APPENDED] {i} results so far", flush=True)
+        sys.stdout.flush()
+    print(f"\n[COMPLETE] All {len(pdfs)} PDFs processed", flush=True)
+    sys.stdout.flush()
+    
+    # Print summary for each file
+    print(f"\n{'='*60}")
+    print("FILE RESULTS:")
+    print(f"{'='*60}")
+    for name, success, error in results:
+        status = "OK" if success else "ERROR"
+        print(f"  [{status}] {name}")
+        if error and error != "skipped":
+            print(f"         Error: {error}")
     
     # Summary
     success_count = sum(1 for _, s, _ in results if s)
@@ -610,6 +653,9 @@ def process_single():
 
 # Main entry point
 if __name__ == "__main__":
+    print(f"[DEBUG MAIN] is_batch_mode() = {is_batch_mode()}", flush=True)
+    print(f"[DEBUG MAIN] INPUT_DIR = {repr(INPUT_DIR)}", flush=True)
+    
     # Check if prompts are loaded
     if not OCR_PROMPT_STEP1 or not OCR_PROMPT_STEP2 or not OCR_PROMPT_STEP3:
         print("[ERROR] All 3 step prompts are required (set in model_config.toml [prompts] section):")
