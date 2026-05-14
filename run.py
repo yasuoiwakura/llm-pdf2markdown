@@ -188,7 +188,10 @@ def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, so
     result = result.replace("{temp_filenames}", ", ".join(temp_filenames))
     return result
 
-# Get model from first active step for debug display
+# Initialize LLM clients through manager
+llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
+
+# Get model from first active step for debug display (after init)
 current_model = None
 for step in [1, 2, 3]:
     client = llm_manager.get_client(step)
