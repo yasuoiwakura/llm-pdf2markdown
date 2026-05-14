@@ -125,12 +125,6 @@ step3_cfg="step_2_and_3"
 ```
 → Prüfe: `step1`, `step_2_and_3` (2 Modelle, nicht 3)
 
-## Run
-
-```bash
-python run.py
-```
-
 ## Configuration Strategy
 
 ### SIMPLE_ENV_MODE
@@ -154,17 +148,6 @@ WENN SIMPLE_ENV_MODE=1:
     → Nutze einfache .env Variablen (single-pass, zukünftig)
 ```
 
-### Ersetzte Variablen (Deprecated - für SIMPLE_ENV_MODE=1 später)
-
-| Alte Variable | Status | Zukunft |
-|---------------|--------|---------|
-| `MULTIPHASE_MODE` | **ERSETZT** | → `SIMPLE_ENV_MODE` |
-| `LMSTUDIO_MODEL` (global) | Deprecated | → TOML `[step*]` sections |
-| `LMSTUDIO_CONTEXT_SIZE` | Deprecated | → TOML `context_size` |
-| `OCR_PROMPT_FILE_STEP*` | Deprecated | → TOML `prompt`/`prompt_file` |
-
-**Hinweis:** Diese Variablen werden für `SIMPLE_ENV_MODE=1` später wieder implementiert. Aktuell auf Eis gelegt.
-
 ## Batch Processing
 
 ### Input Modes
@@ -185,7 +168,7 @@ RECURSIVE=0                # 1 = inkl. Unterordner
 
 # Output
 OUTPUT_DIR=./output        # Ausgabe-Verzeichnis
-OUTPUT_STRUCTURE=preserve  # preserve | flat
+OUTPUT_STRUCTURE=preserve  # preserve | flat | source_dir
 ```
 
 ### CLI-Parameter
@@ -203,11 +186,36 @@ python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
 
 ### Output-Struktur
 
-| INPUT_MODE | Input | Output |
-|------------|-------|--------|
-| single | `datei.pdf` | `output/datei.md` |
-| directory | `./pdfs/datei.pdf` | `output/datei.md` |
-| recursive | `./pdfs/sub/datei.pdf` | `output/sub/datei.md` |
+| OUTPUT_STRUCTURE | Beschreibung |
+|------------------|---------------|
+| `preserve` | Original-Verzeichnisstruktur beibehalten (default) |
+| `flat` | Alle Ausgaben direkt in OUTPUT_DIR |
+| `source_dir` | Struktur des Input-Verzeichnisses beibehalten |
+
+**Beispiel:**
+```
+INPUT_DIR=./pdfs
+OUTPUT_DIR=./output
+INPUT: pdfs/sub/test.pdf
+
+preserve → output/sub/test.md
+flat → output/test.md
+source_dir → output/./pdfs/sub/test.md (oder adjustiert)
+```
+
+### --help Batch-Mode Info
+
+`python run.py --help` muss Batch-Mode Default-Verhalten erklären:
+
+```
+Batch Mode (--INPUT_DIR):
+  - Default: OUTPUT_STRUCTURE=preserve (Struktur beibehalten)
+  - Anpassung: --OUTPUT_STRUCTURE flat|source_dir
+
+Beispiel:
+  python run.py --INPUT_DIR ./pdfs --RECURSIVE 1
+  python run.py --INPUT_DIR ./pdfs --OUTPUT_STRUCTURE flat
+```
 
 ### Pro PDF generierte Dateien
 
@@ -490,38 +498,6 @@ prompts/
 **Hinweis zu _template.md:**
 - (*_template.md Dateien wurden NICHT erstellt - Konzept für Output-Vorlagen, nicht MVP-geplant)
 
-## Python Functions
-
-```python
-def step1_ocr_single_pages(image_paths, prompt) -> str:
-    """Step 1: Plain OCR, jede Seite einzeln
-    Args:
-        image_paths: Liste der Rastergrafik-Pfade (1 pro Seite)
-        prompt: Prompt aus multiphase_step1_ocr.md
-    Returns:
-        Markdown-String mit allen Seiteninhalten (ggf. redundant)
-    """
-
-def step2_extract_metadata(image_paths, prompt) -> dict:
-    """Step 2: Metadaten extrahieren
-    Args:
-        image_paths: Alle Rastergrafiken (1 Call)
-        prompt: Prompt aus multiphase_step2_metadata.md
-    Returns:
-        Dict mit: sender, recipient, document_type, language, headers, footer, original_filename
-    """
-
-def step3_finalize(single_pages_md_path, metadata_yaml_path, prompt) -> str:
-    """Step 3: Zusammenführen
-    Args:
-        single_pages_md_path: Pfad zur _single_pages.md Datei
-        metadata_yaml_path: Pfad zur metadata.yaml
-        prompt: Prompt aus multiphase_step3_finalize.md
-    Returns:
-        Finaler Markdown-String
-    """
-```
-
 ## Structure
 
 ```
@@ -538,255 +514,44 @@ llm_pdf2markdown/
 └── pdf.py                # PDF converter
 ```
 
-## LLM Client Abstraktion
+## Acceptance Criteria
 
-### Ziel
-- Saubere Trennung zwischen API-Logik und Hauptskript
-- Flexibles Laden verschiedener Modelle/Provider pro Step
-- Mehrere LLM-Instanzen parallel verwaltbar
+### Requirement: Plain OCR (Step 1)
+- **GIVEN** a single PDF page image
+- **WHEN** Step 1 processes it
+- **THEN** the output SHALL contain all text verbatim
+- **AND** SHALL NOT rephrase, interpret, or summarize
+- **AND** SHALL use `# page n/total` markers with `<!-- start/end content -->` delimiters
 
-### Architektur: clients/base.py
+### Requirement: Metadata Extraction (Step 2)
+- **GIVEN** all PDF page images
+- **WHEN** Step 2 processes them in a single call
+- **THEN** the output SHALL be valid YAML
+- **AND** SHALL contain sender, recipient, document_type, language, headers, footers
 
-```python
-from abc import ABC, abstractmethod
-from pathlib import Path
+### Requirement: Finalization (Step 3)
+- **GIVEN** `[filename]_single_pages.md` and `metadata.yaml`
+- **WHEN** Step 3 runs
+- **THEN** the output SHALL be a cohesive markdown document
+- **AND** SHALL remove redundant headers/footers based on metadata
 
-class LLMClient(ABC):
-    """Abstract base class for all LLM clients."""
-    
-    model: str           # Modellname
-    provider: str        # "ollama" oder "lmstudio"
-    
-    @abstractmethod
-    def generate(self, prompt: str) -> str:
-        """Text-only prompt → response."""
-    
-    @abstractmethod
-    def generate_with_image(self, image_path: Path, prompt: str) -> str:
-        """Image + prompt → markdown response."""
-    
-    @abstractmethod
-    def get_usage(self) -> dict:
-        """Return: {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int}"""
-    
-    @abstractmethod
-    def close(self):
-        """Cleanup resources."""
-    
-    @abstractmethod
-    def ping(self) -> bool:
-        """Check connection."""
-```
+### Requirement: Batch Processing
+- **GIVEN** an `INPUT_DIR` with multiple PDFs
+- **WHEN** batch mode runs
+- **THEN** each PDF SHALL be processed with the configured output structure
+- **AND** client instances SHALL be reused when config is identical
 
-### clients/ollama.py
+### Requirement: Model Configuration
+- **GIVEN** `step1_cfg` and `step2_cfg` point to the same TOML section
+- **WHEN** running multi-phase processing
+- **THEN** a single client instance SHALL be reused across steps
+- **AND** the model SHALL NOT be reloaded
 
-```python
-from .base import LLMClient
-
-class OllamaClient(LLMClient):
-    def __init__(self, url: str, model: str, keep_alive: str = "30m"):
-        self.url = url
-        self.model = model
-        self.provider = "ollama"
-        self._client = httpx.Client(...)
-    
-    # Implementiert alle abstract methods
-    # API: POST /api/generate
-```
-
-### clients/lmstudio.py
-
-```python
-from .base import LLMClient
-
-class LMStudioClient(LLMClient):
-    def __init__(self, url: str, model: str, context_size: int = 4096):
-        self.url = url
-        self.model = model
-        self.provider = "lmstudio"
-        self._client = httpx.Client(...)
-    
-    # Implementiert alle abstract methods
-    # API: POST /v1/chat/completions (OpenAI-kompatibel)
-    # get_usage() → aus response["usage"] extrahieren
-```
-
-### clients/__init__.py (Factory)
-
-```python
-def create_client(provider: str, model: str, config: dict) -> LLMClient:
-    """Factory: Erstellt passenden Client basierend auf provider."""
-    if provider == "ollama":
-        return OllamaClient(
-            url=config["OLLAMA_URL"],
-            model=model,
-            keep_alive=config.get("OLLAMA_KEEP_ALIVE", "30m")
-        )
-    elif provider == "lmstudio":
-        return LMStudioClient(
-            url=config["LMSTUDIO_URL"],
-            model=model,
-            context_size=config.get("LMSTUDIO_CONTEXT_SIZE", 4096)
-        )
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
-```
-
-### manager.py (Instanz-Management)
-
-```python
-from .clients import create_client
-
-class LLMManager:
-    """Verwaltet LLM-Instanzen für verschiedene Steps."""
-    
-    def __init__(self, config: dict):
-        self.config = config
-        self.default_client: LLMClient = None  # Für Step 2+3
-        self.step1_client: LLMClient = None    # Für Step 1 (falls verschieden)
-    
-    def init_clients(self, provider: str):
-        """Initialisiert Clients basierend auf MULTIPHASE_MODE."""
-        
-        # Default-Client für Step 2+3
-        default_model = provider == "ollama" and config.get("OLLAMA_MODEL") or config.get("LMSTUDIO_MODEL")
-        self.default_client = create_client(provider, default_model, config)
-        
-        # Step 1 Client (nur wenn unterschiedlich)
-        if config.get("MULTIPHASE_MODE") == 1:
-            step1_model = config.get("MULTIPHASE_MODEL_STEP1_OCR")
-            if step1_model and step1_model != default_model:
-                self.step1_client = create_client(provider, step1_model, config)
-            else:
-                self.step1_client = self.default_client  # Wiederverwendung
-    
-    def get_client(self, step: int) -> LLMClient:
-        """Gibt passenden Client für Step zurück."""
-        if step == 1:
-            return self.step1_client or self.default_client
-        else:
-            return self.default_client
-    
-    def cleanup_after_step1(self):
-        """Entlädt step1_client nach Step 1 falls != default_client."""
-        if self.step1_client and self.step1_client != self.default_client:
-            self.step1_client.close()
-            self.step1_client = None
-    
-    def close_all(self):
-        """Schließt alle Clients."""
-        if self.default_client:
-            self.default_client.close()
-        if self.step1_client and self.step1_client != self.default_client:
-            self.step1_client.close()
-```
-
-### Logik für Instanz-Management
-
-```
-WENN MULTIPHASE_MODE=1 UND MULTIPHASE_MODEL_STEP1_OCR != LMSTUDIO_MODEL:
-    → Lade step1_client mit MULTIPHASE_MODEL_STEP1_OCR
-    → Lade default_client mit LMSTUDIO_MODEL
-    → Step 1 → step1_client
-    → Step 2/3 → default_client
-    → NACH Step 1 → cleanup_after_step1() (entlädt step1_client)
-
-SONST:
-    → Lade nur default_client (wiederverwendet für alle Steps)
-    → Step 1, 2, 3 → default_client
-```
-
-### Coding-LLM Hinweise
-
-**WICHTIG: Implementations-Reihenfolge**
-
-1. **Erst** `clients/base.py` mit ABC definieren
-2. **Dann** `clients/ollama.py` und `clients/lmstudio.py` implementieren
-3. **Dann** `clients/__init__.py` mit Factory-Funktion
-4. **Dann** `manager.py` mit LLMManager
-5. **Zuletzt** `run.py` refaktorieren um LLMManager zu nutzen
-
-**Prinzipien:**
-- Keep it simple: Keine überflüssigen Abstraktionen
-- Single Responsibility: Jede Klasse hat eine klar definierte Aufgabe
-- Rückwärtskompatibilität: `client.py` bleibt als Alias erhalten
-- Test-Driven: Erst Test schreiben, dann implementieren (für komplexere Funktionen)
-
-**Env + CLI Integration:**
-```python
-# config.py
-def load_config():
-    # Lädt .env mit python-dotenv
-    # Parst CLI-Argumente mit argparse (großgeschrieben)
-    # CLI-Argumente überschreiben ENV-Werte
-    return config
-```
-
-## Implementation Guidelines
-
-ALWAYS start with the MINIMUM viable implementation:
-- Begin with the smallest, simplest working code
-- Verify it works before adding features
-- NEVER implement multiple features at once
-
-**Virtual Environment:**
-- If `.venv` exists, use it for testing (`source .venv/Scripts/activate` on Windows)
-- Install dependencies: `pip install -r requirements.txt`
-
-## Implementation Steps
-
-| Step | Description | Status |
-|------|-------------|--------|
-| 1 | Basic LLM connection + ping (Ollama & LM Studio) | ✓ done |
-| 2 | Simple text prompt → response | ✓ done |
-| 3 | PDF → PNG images (temp_images/) | ✓ done |
-| 4 | Images → Markdown via LLM | ✓ done |
-| 5 | Save Markdown file | ✓ done |
-| 6 | Custom Prompts from .env or FILE | ✓ done |
-| 7 | Multi-page: All pages in single request | ✓ done |
-| 8 | Output-Tagging für Tuning | ✓ done |
-| 9 | TOML-basierte Modellkonfiguration | ✓ done |
-| 10 | Step-spezifische Client-Instanzen | ✓ done |
-| 11 | Verbose/Debug Output | ✓ done |
-| 12 | **Batch/Verzeichnis-Verarbeitung** | ✓ done |
-| 13 | Step 3: Metadaten-Einbettung | planned |
-
-### Step 1: Plain OCR (Current - MVP)
-- [ ] Process each page individually (1 API call per page)
-- [ ] Load prompt from `OCR_PROMPT_FILE_STEP1`
-- [ ] Add page markers for reference
-- [ ] Save output as `[filename]_single_pages.md`
-- [ ] **STRICT:** NO rephrasing, NO interpretation, NO correction (except obvious OCR errors)
-
-### Step 10: Metadata Extraction
-- [ ] Send all pages in single request
-- [ ] Load prompt from `OCR_PROMPT_FILE_STEP2`
-- [ ] Output structured YAML
-- [ ] Save as `metadata.yaml`
-
-### Step 11: Finalization
-- [ ] Read `_single_pages.md` and `metadata.yaml`
-- [ ] Load prompt from `OCR_PROMPT_FILE_STEP3`
-- [ ] Remove redundant headers/footers based on metadata
-- [ ] Output clean, cohesive markdown
-
-## Critical Rules
-
-1. NEVER skip steps or implement future steps
-2. ALWAYS verify current step works before proceeding
-3. Keep each step as small as possible
-4. If stuck, ask user before implementing more
-5. Only implement ONE step at a time
-6. **Step 1 is the MVP** - even if imperfect, it must be complete and verbatim
-
-## Phases
-
-| Phase | Status |
-|-------|--------|
-| PoC | ✓ complete |
-| MVP | in progress - Step 1 (single page OCR) |
-| Metadata | pending |
-| Finalization | pending |
+### Requirement: CLI Coverage
+- **GIVEN** any ENV variable
+- **WHEN** the user passes `--VARIABLE_NAME` as CLI argument
+- **THEN** the CLI value SHALL override the ENV value
+- **AND** SHALL be documented in `--help`
 
 ## Gemma3-4b Parameters
 
