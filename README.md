@@ -1,49 +1,36 @@
 # llm-pdf2markdown
 
-Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
+> **Bleeding Edge** — v0.1.0 — Local PDF-to-Markdown via LLM vision.
 
-## Was ist das?
+Convert PDFs to Markdown using a local LLM (LM Studio or Ollama).  
+Documents stay on your machine.
 
-Ein Python-Tool, das PDFs per OCR in Markdown konvertiert. 
-Nutzt lokale LLMs - Ihre Dokumente verlassen nie Ihren Computer.
+## Limitations
 
-## Warum?
+- **Only LM Studio** was properly tested. Ollama support exists but is **not verified**.
+- **Context size** is not reliably enforced — loaded models may ignore `LMSTUDIO_CONTEXT_SIZE`.
+- **Always review output** — check for hallucinations, dropped content, and OCR errors.
 
-- **Lokal:** Keine Cloud, keine externen Dienste
-- **Datenschutz:** Vollständige Kontrolle über Ihre Daten  
-- **Flexibel:** Eigene Modelle nutzbar (LM Studio getestet)
-
-## Für wen?
-
-- Wer PDF-Dokumente digitalisieren muss
-- Datenschutz-bewusste Anwender
-- Entwickler, die OCR lokal testen wollen
-
-## Schnellstart
+## Quickstart
 
 ```bash
-# Basis
-python run.py
+copy .env.example .env
+python run.py --USE_LMSTUDIO 1 --TEST_PDF doc.pdf
 
-# Mit LM Studio
-python run.py --USE_LMSTUDIO 1 --LMSTUDIO_MODEL gemma3-4b --TEST_PDF datei.pdf
+# Multi-phase (better quality for complex docs)
+python run.py --MULTIPHASE_MODE 1 --TEST_PDF doc.pdf
 
-# Multi-Phase (3-Stufen OCR für maximale Qualität)
-python run.py --MULTIPHASE_MODE 1 --MULTIPHASE_MODEL_STEP1_OCR glm-ocr@f16
+# Batch mode
+python run.py --INPUT_DIR ./pdfs
 ```
 
-## Voraussetzungen
+## Prerequisites
 
-- Python 3.10+
-- [LM Studio](https://lmstudio.ai) (empfohlen) oder [Ollama](https://ollama.com)
-- .env Datei konfigurieren
+- Python 3.11+
+- [LM Studio](https://lmstudio.ai) (recommended) or [Ollama](https://ollama.com)
+- A vision-capable model loaded (e.g., `gemma3-4b`)
 
-## Anpassung
+## Docs
 
-- Modelle, Prompts, ENV-Variablen: Siehe [SPEC.md](SPEC.md#Config)
-- Known Issues: Siehe [SPEC.md#Known-Issues](SPEC.md#Known-Issues)
-
-## Mehr Details
-
-- Technische Dokumentation: [SPEC.md](SPEC.md)
-- Changelog: CHANGELOG.md
+- [SPEC.md](SPEC.md) — Specification & configuration reference
+- [AGENTS.md](AGENTS.md) — AI-assisted development rules
