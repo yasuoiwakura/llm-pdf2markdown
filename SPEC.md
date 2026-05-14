@@ -79,6 +79,24 @@ SONST:
 
 ### Instance Management
 
+**Single Mode (TEST_PDF gesetzt):**
+```
+1. Lade benötigte LLM-Instanzen
+2. Führe alle Steps aus
+3. Schließe alle LLM-Instanzen
+```
+
+**Batch Mode (INPUT_DIR gesetzt):**
+```
+1. Lade alle benötigten LLM-Instanzen (basierend auf model_config.toml)
+2. Für jede PDF-Datei:
+    a. Wiederverwendung der Instanzen wenn Config identisch
+    b. Alte Instanz schließen wenn Config wechselt
+    c. Neue Instanz erstellen wenn nötig
+3. Alle LLM-Instanzen schließen
+```
+
+**Zwischen Steps (gleiche Config):**
 ```
 WENN next_step_config == current_step_config:
     → Wiederverwendung des gleichen Client-Objekts
