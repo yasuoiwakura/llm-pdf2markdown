@@ -10,11 +10,20 @@ Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 - Interface-Schnipsel sind zulässig, wenn sie Klarheit schenken
 - Vollständige Implementierungen gehören in die Coding-Phase
 
-### Coding-Phase (Implementor)
-- Implementiert WIE laut Spec
-- Keine Architektur-Entscheidungen ohne Rücksprache
-- Input: SPEC.md → Code
-- Änderungen am Spec → zurück zur Plan-Phase
+### Projekt-Konventionen
+
+#### Status-Notation
+- `[ ]` geplant (von Plan gesetzt)
+- `[x]` implementiert (von Coding gesetzt, ausschließlich in CODING_NOTES.md)
+
+#### Rückkanal
+- Coding schreibt nach jedem Task in `CODING_NOTES.md`:
+  - Was wurde implementiert: `[x]` (im Spec referenzierte Tasks)
+  - Was wurde anders umgesetzt als geplant
+  - Welche Fragen/Probleme bleiben für Plan
+- Coding ändert NIEMALS das Spec
+- Plan prüft CODING_NOTES.md vor der nächsten Plan-Phase
+- Nach Prüfung: Plan merged Erkenntnisse ins Spec, löscht CODING_NOTES.md
 
 ### Status: MVP (Multi-phase OCR + Batch)
 
