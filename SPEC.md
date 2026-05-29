@@ -514,6 +514,53 @@ llm_pdf2markdown/
 └── pdf.py                # PDF converter
 ```
 
+## Windows Integration
+
+Rechtsklick-Integration für Windows: eine PDF-Datei direkt per Kontextmenü konvertieren.
+
+### Batch-Datei (pdf-to-markdown.bat)
+
+`pdf-to-markdown.bat` im Projektwurzel für "Öffnen mit...":
+
+```batch
+@echo off
+cd /d "%~dp0"
+call .venv\Scripts\activate.bat
+python run.py --test-pdf "%~1"
+pause
+```
+
+**Nutzung:**
+1. Rechtsklick auf `.pdf` → "Öffnen mit..." → `pdf-to-markdown.bat` wählen
+2. Windows merkt sich die Zuordnung für `.pdf`
+3. Künftig: `.pdf` direkt auf Batch ziehen oder per "Öffnen mit..."
+
+**Anforderungen an run.py:**
+- `--test-pdf <pfad>` muss bereits funktionieren ✓
+- Optional: Positional-Argument `python run.py "pfad.pdf"` (ohne `--test-pdf`) für noch kürzeren Aufruf
+
+### Registry-Kontextmenü (Optional)
+
+`install-context-menu.reg` für Power-User, erzeugt dedizierten Menüeintrag "Convert to Markdown":
+
+```reg
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\LLM2MD]
+@="Convert to Markdown with LLM"
+
+[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\LLM2MD\command]
+@="cmd /c \"cd /d C:\\path\\to\\project && .venv\\Scripts\\activate.bat && python run.py --test-pdf \"%1\" && pause\""
+```
+
+**Hinweis:** Pfade müssen an lokale Installation angepasst werden.
+
+### Implementierungs-Reihenfolge
+
+1. `pdf-to-markdown.bat` erstellen (sofort nutzbar)
+2. `run.py`: Positional-Argument ergänzen (optionaler Komfort)
+3. `install-context-menu.reg` erstellen (optional, für Power-User)
+
 ## Acceptance Criteria
 
 ### Requirement: Plain OCR (Step 1)
