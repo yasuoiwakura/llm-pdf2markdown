@@ -2,7 +2,20 @@
 
 Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
-## Status: MVP (Multi-phase OCR + Batch)
+## Scope (Spec-Regeln für Plan- und Coding-Agent)
+
+### Plan-Phase (Spec-Author)
+- Spezifiziert WAS (Architektur, Optionen, Entscheidungen)
+- Kein Code. Keine konkreten Implementierungsdetails im Spec.
+- Output: SPEC.md (nur Struktur, Interfaces, Entscheidungen)
+
+### Coding-Phase (Implementor)
+- Implementiert WIE laut Spec
+- Keine Architektur-Entscheidungen ohne Rücksprache
+- Input: SPEC.md → Code
+- Änderungen am Spec → zurück zur Plan-Phase
+
+### Status: MVP (Multi-phase OCR + Batch)
 
 ### Stabil (Getestet)
 - ✓ TOML-basierte Modellkonfiguration
