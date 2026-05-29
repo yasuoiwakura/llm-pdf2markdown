@@ -2,7 +2,30 @@
 
 Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
-## Status: MVP (Multi-phase OCR + Batch)
+## Scope (Spec-Regeln für Plan- und Coding-Agent)
+
+### Plan-Phase (Spec-Author)
+- Spezifiziert WAS (Architektur, Optionen, Entscheidungen)
+- Beschreibe Architektur in Sätzen – das ist der Primärkanal
+- Interface-Schnipsel sind zulässig, wenn sie Klarheit schenken
+- Vollständige Implementierungen gehören in die Coding-Phase
+
+### Projekt-Konventionen
+
+#### Status-Notation
+- `[ ]` geplant (von Plan gesetzt)
+- `[x]` implementiert (von Coding gesetzt, ausschließlich in CODING_NOTES.md)
+
+#### Rückkanal
+- Coding schreibt nach jedem Task in `CODING_NOTES.md`:
+  - Was wurde implementiert: `[x]` (im Spec referenzierte Tasks)
+  - Was wurde anders umgesetzt als geplant
+  - Welche Fragen/Probleme bleiben für Plan
+- Coding ändert NIEMALS das Spec
+- Plan prüft CODING_NOTES.md vor der nächsten Plan-Phase
+- Nach Prüfung: Plan merged Erkenntnisse ins Spec, löscht CODING_NOTES.md
+
+### Status: MVP (Multi-phase OCR + Batch)
 
 ### Stabil (Getestet)
 - ✓ TOML-basierte Modellkonfiguration
@@ -513,6 +536,31 @@ llm_pdf2markdown/
 ├── client.py             # Legacy (alias für Rückwärtskompatibilität)
 └── pdf.py                # PDF converter
 ```
+
+## Windows Integration
+
+Rechtsklick-Integration für Windows: eine PDF-Datei direkt per Kontextmenü konvertieren.
+
+### Batch-Datei (pdf-to-markdown.bat)
+
+`pdf-to-markdown.bat` im Projektwurzel für "Öffnen mit...".
+
+**Nutzung:**
+1. Rechtsklick auf `.pdf` → "Öffnen mit..." → `pdf-to-markdown.bat` wählen
+2. Windows merkt sich die Zuordnung für `.pdf`
+3. Künftig: `.pdf` direkt auf Batch ziehen oder per "Öffnen mit..."
+
+### Registry-Kontextmenü (Optional)
+
+`windows\install-context-menu.reg` für dedizierten Menüeintrag "Convert to Markdown".
+
+**Hinweis:** Pfade müssen an lokale Installation angepasst werden.
+
+### Implementierungs-Reihenfolge
+
+1. `pdf-to-markdown.bat` erstellen (sofort nutzbar)
+2. `run.py`: Positional-Argument ergänzen (optionaler Komfort)
+3. `install-context-menu.reg` erstellen (optional, für Power-User)
 
 ## Acceptance Criteria
 

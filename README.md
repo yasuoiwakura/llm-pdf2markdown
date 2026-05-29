@@ -13,7 +13,7 @@
 
 ```bash
 # Single PDF
-python run.py --test-pdf document.pdf
+python run.py --input-pdf document.pdf
 
 # Directory (all PDFs)
 python run.py --input-dir ./pdfs
@@ -25,7 +25,7 @@ python run.py --input-dir ./pdfs --recursive
 python run.py --input-dir ./pdfs --output-dir ./output
 
 # Verbose output (0-3)
-python run.py --test-pdf document.pdf -v 2
+python run.py --input-pdf document.pdf -v 2
 
 # Overwrite existing files
 python run.py --input-dir ./pdfs --overwrite
@@ -35,7 +35,7 @@ python run.py --input-dir ./pdfs --overwrite
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `--test-pdf <file>` | Single PDF file (mutually exclusive with `--input-dir`) | `--test-pdf doc.pdf` |
+| `--input-pdf <file>` | Single PDF file (mutually exclusive with `--input-dir`) | `--input-pdf doc.pdf` |
 | `--input-dir <dir>` | Directory containing PDFs | `--input-dir ./pdfs` |
 | `--recursive` | Process directories recursively (include subfolders) | `--recursive` |
 | `--output-dir <dir>` | Output directory for results | `--output-dir ./output` |
@@ -48,7 +48,7 @@ python run.py --input-dir ./pdfs --overwrite
 
 | Mode | Usage | Output |
 |------|-------|--------|
-| Single | `--test-pdf doc.pdf` | `doc.md` in same directory as PDF |
+| Single | `--input-pdf doc.pdf` | `doc.md` in same directory as PDF |
 | Directory | `--input-dir ./pdfs` | `*.md` files in `OUTPUT_DIR` |
 | Recursive | `--input-dir ./pdfs --recursive` | `*.md` files preserving folder structure |
 
