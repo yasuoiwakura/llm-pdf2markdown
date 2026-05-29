@@ -540,7 +540,7 @@ Rechtsklick-Integration für Windows: eine PDF-Datei direkt per Kontextmenü kon
 @echo off
 cd /d "%~dp0"
 call .venv\Scripts\activate.bat
-python run.py --test-pdf "%~1"
+python run.py --input-pdf "%~1"
 pause
 ```
 
@@ -550,12 +550,11 @@ pause
 3. Künftig: `.pdf` direkt auf Batch ziehen oder per "Öffnen mit..."
 
 **Anforderungen an run.py:**
-- `--test-pdf <pfad>` muss bereits funktionieren ✓
-- Optional: Positional-Argument `python run.py "pfad.pdf"` (ohne `--test-pdf`) für noch kürzeren Aufruf
+- `--input-pdf <pfad>` muss bereits funktionieren ✓
 
 ### Registry-Kontextmenü (Optional)
 
-`install-context-menu.reg` für Power-User, erzeugt dedizierten Menüeintrag "Convert to Markdown":
+`windows\install-context-menu.reg` für Power-User, erzeugt dedizierten Menüeintrag "Convert to Markdown":
 
 ```reg
 Windows Registry Editor Version 5.00
@@ -564,7 +563,7 @@ Windows Registry Editor Version 5.00
 @="Convert to Markdown with LLM"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\LLM2MD\command]
-@="cmd /c \"cd /d C:\\path\\to\\project && .venv\\Scripts\\activate.bat && python run.py --test-pdf \"%1\" && pause\""
+@="cmd /c \"cd /d C:\\path\\to\\project && .venv\\Scripts\\activate.bat && python run.py --input-pdf \"%1\" && pause\""
 ```
 
 **Hinweis:** Pfade müssen an lokale Installation angepasst werden.
