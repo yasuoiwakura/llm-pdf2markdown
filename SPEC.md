@@ -534,37 +534,16 @@ Rechtsklick-Integration für Windows: eine PDF-Datei direkt per Kontextmenü kon
 
 ### Batch-Datei (pdf-to-markdown.bat)
 
-`pdf-to-markdown.bat` im Projektwurzel für "Öffnen mit...":
-
-```batch
-@echo off
-cd /d "%~dp0"
-call .venv\Scripts\activate.bat
-python run.py --input-pdf "%~1"
-pause
-```
+`pdf-to-markdown.bat` im Projektwurzel für "Öffnen mit...".
 
 **Nutzung:**
 1. Rechtsklick auf `.pdf` → "Öffnen mit..." → `pdf-to-markdown.bat` wählen
 2. Windows merkt sich die Zuordnung für `.pdf`
 3. Künftig: `.pdf` direkt auf Batch ziehen oder per "Öffnen mit..."
 
-**Anforderungen an run.py:**
-- `--input-pdf <pfad>` muss bereits funktionieren ✓
-
 ### Registry-Kontextmenü (Optional)
 
-`windows\install-context-menu.reg` für Power-User, erzeugt dedizierten Menüeintrag "Convert to Markdown":
-
-```reg
-Windows Registry Editor Version 5.00
-
-[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\LLM2MD]
-@="Convert to Markdown with LLM"
-
-[HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\LLM2MD\command]
-@="cmd /c \"cd /d C:\\path\\to\\project && .venv\\Scripts\\activate.bat && python run.py --input-pdf \"%1\" && pause\""
-```
+`windows\install-context-menu.reg` für dedizierten Menüeintrag "Convert to Markdown".
 
 **Hinweis:** Pfade müssen an lokale Installation angepasst werden.
 
