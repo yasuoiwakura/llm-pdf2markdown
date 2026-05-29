@@ -4,4 +4,4 @@ Windows Registry Editor Version 5.00
 @="Convert to Markdown with LLM"
 
 [HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.pdf\shell\LLM2MD\command]
-@="cmd /c \"cd /d C:\\path\\to\\llm-pdf2markdown && .venv\\Scripts\\activate.bat && python run.py --test-file \"%1\" && pause\""
+@="cmd /c \"cd /d C:\\path\\to\\llm-pdf2markdown && .venv\\Scripts\\activate.bat && python run.py --input-pdf \"%1\" && pause\""
