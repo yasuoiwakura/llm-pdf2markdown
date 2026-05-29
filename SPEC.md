@@ -6,8 +6,9 @@ Convert PDFs to Markdown using a local LLM (Ollama or LM Studio).
 
 ### Plan-Phase (Spec-Author)
 - Spezifiziert WAS (Architektur, Optionen, Entscheidungen)
-- Kein Code. Keine konkreten Implementierungsdetails im Spec.
-- Output: SPEC.md (nur Struktur, Interfaces, Entscheidungen)
+- Beschreibe Architektur in Sätzen – das ist der Primärkanal
+- Interface-Schnipsel sind zulässig, wenn sie Klarheit schenken
+- Vollständige Implementierungen gehören in die Coding-Phase
 
 ### Coding-Phase (Implementor)
 - Implementiert WIE laut Spec
