@@ -14,21 +14,23 @@ parser = argparse.ArgumentParser(description="Convert PDFs to Markdown using loc
 
 # Input modes (mutually exclusive)
 input_group = parser.add_mutually_exclusive_group()
-input_group.add_argument("--test-pdf", type=str, default=None, help="Single PDF file")
+input_group.add_argument("--input-pdf", type=str, default=None, help="Single PDF file")
 input_group.add_argument("--input-dir", type=str, default=None, help="Directory containing PDFs")
 
-# Batch options
+# General options
 parser.add_argument("--recursive", action="store_true", help="Process directories recursively")
 parser.add_argument("--output-structure", choices=["preserve", "flat"], default=None, help="Output directory structure (preserve=keep subdirs, flat=all in one dir)")
 parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output files")
-
-# General options
 parser.add_argument("--verbose", "-v", type=int, default=None, help="Verbosity level (0-3)")
 parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
 
 args = parser.parse_args()
 
 # Batch options override from CLI
+if args.input_pdf is not None:
+    TEST_PDF = args.input_pdf
+else:
+    TEST_PDF = os.getenv("TEST_PDF")
 if args.input_dir is not None:
     INPUT_DIR = args.input_dir
 else:
@@ -149,8 +151,8 @@ OCR_PROMPT_STEP2 = load_prompt_from_config(2)
 OCR_PROMPT_STEP3 = load_prompt_from_config(3)
 
 # Test config
-TEST_PDF = os.getenv("TEST_PDF")
-# INPUT_DIR is set from CLI argument above (line 32-35)
+# TEST_PDF is set from CLI argument above (line 30-33)
+# INPUT_DIR is set from CLI argument above (line 35-38)
 RECURSIVE = bool_from_env("RECURSIVE", False)
 OUTPUT_STRUCTURE = os.getenv("OUTPUT_STRUCTURE", "preserve")
 SCALE = 2.0
