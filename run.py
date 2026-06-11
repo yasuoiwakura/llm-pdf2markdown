@@ -198,24 +198,12 @@ def replace_prompt_vars(prompt: str, total_pages: int, current_page: int = 0, so
     result = result.replace("{temp_filenames}", ", ".join(temp_filenames))
     return result
 
-# Initialize LLM clients through manager
-llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
-
-# Get model from first active step for debug display (after init)
-current_model = None
-for step in [1, 2, 3]:
-    client = llm_manager.get_client(step)
-    if client:
-        current_model = client.model
-        break
-
-# Zeige Konfiguration in einer Zeile bei verbose >= 1
-debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {current_model}")
-
 
 def ping() -> bool:
     """Check if LLM is reachable using manager."""
     client = llm_manager.get_client(1)
+    if client is None:
+        return False
     return client.ping()
 
 
@@ -666,6 +654,18 @@ if __name__ == "__main__":
         print(f"  - step3_file: {'SET' if OCR_PROMPT_STEP3 else 'MISSING'}")
         exit(1)
     
+    # Initialize LLM clients
+    llm_manager.init_clients("lmstudio" if USE_LMSTUDIO else "ollama")
+
+    # Show model info
+    current_model = None
+    for step in [1, 2, 3]:
+        client = llm_manager.get_client(step)
+        if client:
+            current_model = client.model
+            break
+    debug(1, f"Provider: {PROVIDER} | URL: {URL} | Model: {current_model}")
+
     # Step 1: Connection check
     if ping():
         print(f"[OK] Connected to {PROVIDER}")

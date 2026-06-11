@@ -1,3 +1,4 @@
+import httpx
 import tomli
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -80,7 +81,17 @@ class LLMManager:
         
         if client.context_size_by_load and provider == "lmstudio" and context_size:
             debug(self.verbose, 2, f"Explicitly loading model '{model}' with context_size={context_size}")
-            client.load_model(int(context_size))
+            try:
+                client.load_model(int(context_size))
+            except httpx.ConnectError:
+                print(f"[ERROR] Cannot connect to {provider} at {client.url}")
+                print(f"[HELP] Start {provider} and check the URL in your .env file.")
+                print(f"[HELP] Also verify the server is running and accepting connections.")
+                exit(1)
+            except Exception as e:
+                print(f"[ERROR] Failed to load model '{model}' on {provider}: {e}")
+                print(f"[HELP] Check the model name in model_config.toml and ensure it exists on the server.")
+                exit(1)
             client._was_explicitly_loaded = True
             debug(self.verbose, 2, f"Model '{model}' loaded, instance_id={client._instance_id}")
         
@@ -128,7 +139,15 @@ class LLMManager:
         if provider == "lmstudio" and self.config.get("CONTEXT_SIZE_BY_MODEL_LOAD"):
             context_size = self.config.get("LMSTUDIO_CONTEXT_SIZE")
             if context_size:
-                client.load_model(int(context_size))
+                try:
+                    client.load_model(int(context_size))
+                except httpx.ConnectError:
+                    print(f"[ERROR] Cannot connect to {provider} at {client.url}")
+                    print(f"[HELP] Start {provider} and check the URL in your .env file.")
+                    exit(1)
+                except Exception as e:
+                    print(f"[ERROR] Failed to load model on {provider}: {e}")
+                    exit(1)
                 client._was_explicitly_loaded = True
         
         self.step_clients = {1: client, 2: client, 3: client}

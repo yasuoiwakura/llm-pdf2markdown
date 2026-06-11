@@ -25,16 +25,22 @@ class OllamaClient(LLMClient):
             return False
     
     def generate(self, prompt: str) -> str:
-        resp = self._client.post(
-            f"{self.url}/api/generate",
-            json={
-                "model": self.model,
-                "prompt": prompt,
-                "keep_alive": self.keep_alive,
-                "stream": False
-            },
-        )
-        resp.raise_for_status()
+        try:
+            resp = self._client.post(
+                f"{self.url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "keep_alive": self.keep_alive,
+                    "stream": False
+                },
+            )
+            resp.raise_for_status()
+        except httpx.ConnectError:
+            print(f"[ERROR] Cannot connect to Ollama at {self.url}")
+            print(f"[HELP] Start Ollama with: ollama serve")
+            print(f"[HELP] Check the URL in your .env file (OLLAMA_URL).")
+            raise
         data = resp.json()
         self._last_usage = {}
         return data.get("response", "")
@@ -49,17 +55,23 @@ class OllamaClient(LLMClient):
         # Encode all images
         images_b64 = [base64.b64encode(img.read_bytes()).decode() for img in image_paths]
         
-        resp = self._client.post(
-            f"{self.url}/api/generate",
-            json={
-                "model": self.model,
-                "prompt": prompt,
-                "images": images_b64,
-                "keep_alive": self.keep_alive,
-                "stream": False
-            },
-        )
-        resp.raise_for_status()
+        try:
+            resp = self._client.post(
+                f"{self.url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "images": images_b64,
+                    "keep_alive": self.keep_alive,
+                    "stream": False
+                },
+            )
+            resp.raise_for_status()
+        except httpx.ConnectError:
+            print(f"[ERROR] Cannot connect to Ollama at {self.url}")
+            print(f"[HELP] Start Ollama with: ollama serve")
+            print(f"[HELP] Check the URL in your .env file (OLLAMA_URL).")
+            raise
         data = resp.json()
         self._last_usage = {}
         return data.get("response", "")

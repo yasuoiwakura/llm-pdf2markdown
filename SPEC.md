@@ -277,6 +277,30 @@ logs/
 3. Zusammenfassung: X Dateien erfolgreich, Y Fehler
 ```
 
+## Connection-Fail-Handling
+
+### Problem
+Bei fehlender Verbindung zum Inferenzserver bricht das Programm sofort ab. Der User hat keine Möglichkeit, auf einen kurzzeitigen Ausfall zu reagieren.
+
+### Steuerung
+`ON_CONNECTION_FAIL` per `.env` und CLI-Arg, zwei Werte:
+- `exit` (default): Meldung + Programmende (wie bisher)
+- `retry`: Meldung + User kann per Tastendruck erneut versuchen
+
+### Verhalten in retry
+- Wartedialog mit "Press Enter to retry… (Ctrl+C to exit)"
+- Nach Tastendruck: erneuter Verbindungsversuch
+- Bei Erfolg: weiter im Programm
+- Bei Abbruch (Ctrl+C): exit(1)
+
+### Kein Spamming
+Zwischen den Versuchen liegt **keine automatische Polling-Schleife**. Der User löst jeden Versuch manuell aus. Der Server wird nicht ohne User-Zutun angefragt.
+
+### Architektur
+- Entscheidungslogik auf orchestrierender Ebene (run.py)
+- `ping()` in den Clients bleibt unverändert
+- Die Prüfung erfolgt im Main vor dem Model-Check (wie bisher)
+
 ## Config
 
 ```env
@@ -301,6 +325,9 @@ LMSTUDIO_CONTEXT_SIZE=16384
 CONTEXT_SIZE_BY_MODEL_LOAD=0
 # Ungetestet: Funktioniert möglicherweise
 CONTEXT_SIZE_PER_REQUEST=0
+
+# Connection fail handling: exit | retry
+ON_CONNECTION_FAIL=exit
 
 # LLM Parameters
 MAX_PAGES_PER_REQUEST=4

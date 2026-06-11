@@ -41,8 +41,13 @@ class LMStudioClient(LLMClient):
         if self.context_size and self.context_size_per_request:
             payload["max_tokens"] = self.context_size
         
-        resp = self._client.post(f"{self.url}/v1/chat/completions", json=payload)
-        resp.raise_for_status()
+        try:
+            resp = self._client.post(f"{self.url}/v1/chat/completions", json=payload)
+            resp.raise_for_status()
+        except httpx.ConnectError:
+            print(f"[ERROR] Cannot connect to LM Studio at {self.url}")
+            print(f"[HELP] Start LM Studio and make sure the server is running.")
+            raise
         data = resp.json()
         
         self._last_usage = data.get("usage", {})
@@ -70,8 +75,13 @@ class LMStudioClient(LLMClient):
         if self.context_size and self.context_size_per_request:
             payload["max_tokens"] = self.context_size
         
-        resp = self._client.post(f"{self.url}/v1/chat/completions", json=payload)
-        resp.raise_for_status()
+        try:
+            resp = self._client.post(f"{self.url}/v1/chat/completions", json=payload)
+            resp.raise_for_status()
+        except httpx.ConnectError:
+            print(f"[ERROR] Cannot connect to LM Studio at {self.url}")
+            print(f"[HELP] Start LM Studio and make sure the server is running.")
+            raise
         data = resp.json()
         
         self._last_usage = data.get("usage", {})
@@ -93,10 +103,15 @@ class LMStudioClient(LLMClient):
         debug(self.verbose, 3, f"--> POST {self.url}/api/v1/models/load")
         debug(self.verbose, 3, f"--> JSON: model={self.model}, context_length={int(ctx)}")
         
-        resp = self._client.post(
-            f"{self.url}/api/v1/models/load",
-            json={"model": self.model, "context_length": int(ctx)}
-        )
+        try:
+            resp = self._client.post(
+                f"{self.url}/api/v1/models/load",
+                json={"model": self.model, "context_length": int(ctx)}
+            )
+        except httpx.ConnectError:
+            print(f"[ERROR] Cannot connect to LM Studio at {self.url}")
+            print(f"[HELP] Start LM Studio and make sure the server is running.")
+            raise
         
         debug(self.verbose, 3, f"<-- Response: {resp.status_code}")
         
